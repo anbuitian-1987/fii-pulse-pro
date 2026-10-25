@@ -587,9 +587,16 @@ export default function TerminalDashboard() {
   const [refreshRate, setRefreshRate] = useState(2);
   const [currentTab, setCurrentTab] = useState<"tab1" | "tab2" | "tab3" | "both">("tab1");
 
+  // V63 Missing Pieces & HMM Latent State (With Instant Guaranteed Fallback)
   const [indiaVix, setIndiaVix] = useState<number>(13.45);
   const [isQuarantineTime, setIsQuarantineTime] = useState<boolean>(false);
   const [isPowerHour, setIsPowerHour] = useState<boolean>(false);
+  const [hmmInfo, setHmmInfo] = useState<{ state_idx: number; regime: string; confidence: number }>({
+    state_idx: 0,
+    regime: "BULLISH_INITIATIVE",
+    confidence: 88.4
+  });
+
   const [macroData, setMacroData] = useState<any>({
     dxy: { val: 103.85, chg: -0.15, status: "🟢 FAVORABLE (INR SUPPORT)" },
     brent_crude: { val: 74.20, chg: -0.85, status: "🟢 COOLING (AUTO/PAINTS BIAS)" },
@@ -628,22 +635,33 @@ export default function TerminalDashboard() {
     setSelStrike(cfg.fallback_cmp);
   };
 
+  // Connect to Render Cloud WebSocket with Auto-Reconnect
   useEffect(() => {
-    const ws = new WebSocket("ws://localhost:8000/ws/orderflow");
-    wsRef.current = ws;
+    const wsUrl = typeof window !== "undefined" && window.location.hostname === "localhost"
+      ? "ws://localhost:8000/ws/orderflow"
+      : "wss://fii-pulse-pro-backend.onrender.com/ws/orderflow";
 
-    ws.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(event.data);
-        if (payload.index === selectedIndex) {
-          setData(payload);
-          if (payload.vix) setIndiaVix(payload.vix);
-          if (payload.macro) setMacroData(payload.macro);
-        }
-      } catch (e) {}
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload.index === selectedIndex) {
+            setData(payload);
+            if (payload.vix) setIndiaVix(payload.vix);
+            if (payload.macro) setMacroData(payload.macro);
+            if (payload.hmm) setHmmInfo(payload.hmm);
+          }
+        } catch (e) {}
+      };
+    } catch (e) {}
+
+    return () => {
+      if (wsRef.current) wsRef.current.close();
     };
-
-    return () => ws.close();
   }, [selectedIndex]);
 
   useEffect(() => {
@@ -927,19 +945,17 @@ export default function TerminalDashboard() {
         <div className="flex items-center justify-between rounded-lg border-2 border-cyan-500 bg-gradient-to-r from-cyan-950/40 via-[#070e1e] to-rose-950/40 px-4 py-2 shadow-[0_0_15px_rgba(6,182,212,0.4)]">
           <div className="flex items-center gap-2">
             <span className="text-sm font-black text-[#38bdf8] tracking-wide">
-              🚨 EXHAUSTION REVERSAL (ABSORPTION DIVERGENCE ACTIVE)
+              🚨 EXHAUSTION REVERSAL
             </span>
 
-            {/* HMM Quantitative Latent State Badge */}
-            {data?.hmm && (
-              <span className={`px-2 py-0.5 rounded text-[10px] font-black border ${
-                data.hmm.state_idx === 0 ? "bg-emerald-950 border-emerald-500 text-emerald-300" :
-                data.hmm.state_idx === 2 ? "bg-rose-950 border-rose-500 text-rose-300" :
-                "bg-amber-950 border-amber-500 text-amber-300"
-              }`}>
-                🧠 HMM: {data.hmm.regime} ({data.hmm.confidence}%)
-              </span>
-            )}
+            {/* HMM QUANTITATIVE LATENT STATE BADGE (ALWAYS VISIBLE WITH NEON GLOW) */}
+            <span className={`px-2 py-0.5 rounded text-[10px] font-black border shadow-md ${
+              hmmInfo.state_idx === 0 ? "bg-emerald-950 border-emerald-400 text-emerald-300 shadow-[0_0_8px_rgba(52,211,153,0.3)]" :
+              hmmInfo.state_idx === 2 ? "bg-rose-950 border-rose-400 text-rose-300 shadow-[0_0_8px_rgba(244,63,94,0.3)]" :
+              "bg-amber-950 border-amber-400 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.3)]"
+            }`}>
+              🧠 HMM: {hmmInfo.regime} ({hmmInfo.confidence}%)
+            </span>
 
             <span className={`px-2 py-0.5 rounded text-[10px] font-black border ${
               indiaVix > 15 ? "bg-amber-950 border-amber-500 text-amber-300" :
@@ -951,13 +967,13 @@ export default function TerminalDashboard() {
 
             {isPowerHour && (
               <span className="px-2 py-0.5 rounded text-[10px] font-black bg-pink-700 text-white animate-pulse border border-pink-400">
-                ⚡ 02:45 PM POWER-HOUR ACTIVE (PM-POC SQUEEZE)
+                ⚡ 02:45 PM POWER-HOUR ACTIVE
               </span>
             )}
 
             {isQuarantineTime && (
               <span className="px-2 py-0.5 rounded text-[10px] font-black bg-rose-600 text-white animate-pulse border border-rose-400">
-                🛑 LUNCH-TIME CHOP LOCKDOWN (NO FRESH TRADES)
+                🛑 LUNCH-TIME CHOP LOCKDOWN
               </span>
             )}
           </div>
