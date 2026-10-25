@@ -1,8 +1,9 @@
-﻿import asyncio
+import asyncio
 import os
 import datetime
 import requests
 import json
+from typing import List, Dict, Any
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 from fastapi.middleware.cors import CORSMiddleware
@@ -571,3 +572,82 @@ async def websocket_orderflow(websocket: WebSocket):
         print("🔴 Client Disconnected Cleanly")
     except Exception as e:
         print("🔴 WebSocket Session Ended:", e)
+
+
+# ==============================================================================
+# 4. INSTITUTIONAL MODULAR ADD-ONS (F&O ITM STRIKE & FIBONACCI TARGET ENGINE)
+# ==============================================================================
+
+STOCK_STEP_SIZES: Dict[str, float] = {
+    "RELIANCE": 20.0, "HDFCBANK": 10.0, "ICICIBANK": 10.0, "INFY": 20.0,
+    "TCS": 50.0, "SBIN": 5.0, "AXISBANK": 10.0, "KOTAKBANK": 20.0,
+    "LT": 50.0, "TATAMOTORS": 10.0, "NIFTY": 50.0, "BANKNIFTY": 100.0
+}
+
+@app.get("/api/scanner/itm-strike")
+def fetch_itm_strike(symbol: str, spot: float, option_type: str) -> Dict[str, Any]:
+    """
+    Calculates 1-strike Deep In-The-Money (ITM) Strike (Delta ~0.55 - 0.60)
+    to eliminate Theta decay and maximize spot momentum capture.
+    """
+    step = STOCK_STEP_SIZES.get(symbol.upper(), 10.0)
+    atm_strike = round(spot / step) * step
+    
+    if option_type.upper() == "CE":
+        # 1-Strike In-The-Money for Call
+        selected_strike = atm_strike - step
+    else:
+        # 1-Strike In-The-Money for Put
+        selected_strike = atm_strike + step
+
+    return {
+        "symbol": symbol.upper(),
+        "spot_price": round(spot, 2),
+        "option_type": option_type.upper(),
+        "atm_strike": atm_strike,
+        "selected_itm_strike": selected_strike,
+        "delta_profile": "0.55 - 0.60 ITM"
+    }
+
+
+@app.get("/api/calculator/fibonacci")
+def fetch_fibonacci_targets(entry: float, sl: float, direction: str = "LONG") -> Dict[str, Any]:
+    """
+    Fibonacci Dynamic Calculation Engine with strict institutional execution rules:
+    - Base Risk = |Entry - SL|
+    - At T1 (0.382): Book 50% Profit & Move SL to Entry (Cost)
+    - T2 (0.618) to T6 (4.236): Trail runners
+    """
+    risk = abs(entry - sl)
+    
+    if direction.upper() == "LONG":
+        t1 = round(entry + (risk * 0.382), 2)
+        t2 = round(entry + (risk * 0.618), 2)
+        t3 = round(entry + (risk * 1.000), 2)
+        t4 = round(entry + (risk * 1.618), 2)
+        t5 = round(entry + (risk * 2.618), 2)
+        t6 = round(entry + (risk * 4.236), 2)
+    else:
+        t1 = round(entry - (risk * 0.382), 2)
+        t2 = round(entry - (risk * 0.618), 2)
+        t3 = round(entry - (risk * 1.000), 2)
+        t4 = round(entry - (risk * 1.618), 2)
+        t5 = round(entry - (risk * 2.618), 2)
+        t6 = round(entry - (risk * 4.236), 2)
+    return {
+        "entry_price": round(entry, 2),
+        "initial_sl": round(sl, 2),
+        "risk_points": round(risk, 2),
+        "rules": {
+            "T1_ACTION": "BOOK 50% LOT & MOVE SL TO COST (ENTRY)",
+            "COST_SL": round(entry, 2)
+        },
+        "targets": {
+            "T1_382": t1,
+            "T2_618": t2,
+            "T3_1000": t3,
+            "T4_1618": t4,
+            "T5_2618": t5,
+            "T6_4236": t6
+        }
+    }
