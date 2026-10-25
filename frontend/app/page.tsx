@@ -136,7 +136,7 @@ function StockScreener({ onSelectStock }: StockScreenerProps) {
 }
 
 // ==============================================================================
-// 2. EMBEDDED DYNAMIC FIBONACCI TARGET & DHAN 1-CLICK ORDER EXECUTION ENGINE
+// 2. EMBEDDED DYNAMIC FIBONACCI TARGET ENGINE (TAB 3)
 // ==============================================================================
 interface FibTargets {
   T1_382: number;
@@ -156,7 +156,6 @@ function LiveFibonacciEngine({ activeData }: { activeData: { symbol: string; tri
   const [isPaperTrade, setIsPaperTrade] = useState<boolean>(true);
   const [lotCount, setLotCount] = useState<number>(1);
   const [orderStatusMsg, setOrderStatusMsg] = useState<string | null>(null);
-  const [isPlacingOrder, setIsPlacingOrder] = useState<boolean>(false);
 
   const [targets, setTargets] = useState<FibTargets | null>({
     T1_382: 244.40,
@@ -203,10 +202,8 @@ function LiveFibonacciEngine({ activeData }: { activeData: { symbol: string; tri
     }
   }, [activeData]);
 
-  // Dhan 1-Click Order Trigger Handler
   const handlePlaceOrder = async (tradeType: "CE" | "PE") => {
-    setIsPlacingOrder(true);
-    setOrderStatusMsg("Transmitting order to execution gateway...");
+    setOrderStatusMsg("Transmitting trade...");
     try {
       const payload = {
         symbol,
@@ -229,12 +226,10 @@ function LiveFibonacciEngine({ activeData }: { activeData: { symbol: string; tri
         const resData = await res.json();
         setOrderStatusMsg(resData.msg || "Order Placed Successfully!");
       } else {
-        setOrderStatusMsg(isPaperTrade ? "🟢 [PAPER TRADE EXECUTED] Logged Locally at " + entryPrice : "❌ Dhan Gateway Failed. Check Token!");
+        setOrderStatusMsg(isPaperTrade ? `🟢 [PAPER FILLED] ${symbol} ${strike} at ₹${entryPrice}` : "❌ Dhan Order Failed");
       }
     } catch (e) {
-      setOrderStatusMsg(isPaperTrade ? `🟢 [PAPER SIMULATION FILLED] ${symbol} ${strike} at ₹${entryPrice} (SL ₹${slPrice})` : "❌ Connection Timeout!");
-    } finally {
-      setIsPlacingOrder(false);
+      setOrderStatusMsg(isPaperTrade ? `🟢 [PAPER SIMULATION FILLED] ${symbol} ${strike} at ₹${entryPrice}` : "❌ Connection Timeout!");
     }
   };
 
@@ -246,7 +241,6 @@ function LiveFibonacciEngine({ activeData }: { activeData: { symbol: string; tri
           <span style={{ fontSize: "11px", background: "#0284c7", padding: "2px 8px", borderRadius: "4px" }}>DELTA 0.55-0.60 ITM</span>
         </div>
 
-        {/* Paper Trade vs Real Money Toggle Switch */}
         <div style={{ display: "flex", alignItems: "center", background: "#0f172a", border: "1px solid #334155", borderRadius: "6px", padding: "2px" }}>
           <button
             onClick={() => setIsPaperTrade(true)}
@@ -332,10 +326,8 @@ function LiveFibonacciEngine({ activeData }: { activeData: { symbol: string; tri
         </div>
       </div>
 
-      {/* 1-Click Buy Action Buttons */}
       <div style={{ display: "flex", gap: "10px", marginBottom: "12px" }}>
         <button
-          disabled={isPlacingOrder}
           onClick={() => {
             setDirection("LONG");
             runCalculation(entryPrice, slPrice, "LONG");
@@ -356,7 +348,6 @@ function LiveFibonacciEngine({ activeData }: { activeData: { symbol: string; tri
           🚀 {isPaperTrade ? "PAPER BUY" : "DHAN 1-CLICK BUY"} CE (LONG)
         </button>
         <button
-          disabled={isPlacingOrder}
           onClick={() => {
             setDirection("SHORT");
             runCalculation(entryPrice, slPrice, "SHORT");
@@ -378,7 +369,6 @@ function LiveFibonacciEngine({ activeData }: { activeData: { symbol: string; tri
         </button>
       </div>
 
-      {/* Order Status Feedback Box */}
       {orderStatusMsg && (
         <div style={{
           background: orderStatusMsg.includes("❌") ? "#450a0a" : "#022c22",
@@ -556,6 +546,12 @@ export default function TerminalDashboard() {
   const [refreshRate, setRefreshRate] = useState(2);
   const [currentTab, setCurrentTab] = useState<"tab1" | "tab2" | "tab3" | "both">("tab1");
 
+  // Tab 1 Institutional 1-Click Execution State
+  const [tab1PaperMode, setTab1PaperMode] = useState<boolean>(true);
+  const [tab1Lots, setTab1Lots] = useState<number>(1);
+  const [tab1OrderMsg, setTab1OrderMsg] = useState<string | null>(null);
+
+  // Tab 3 Screener to Fibonacci Link
   const [fibAutoData, setFibAutoData] = useState<{ symbol: string; trigger: number; sl: number; type: "CE" | "PE"; suggestedStrike: string } | null>(null);
 
   const activeIndexConfig = MASTER_INDICES[selectedIndex] || MASTER_INDICES["NIFTY 50"];
@@ -653,6 +649,39 @@ export default function TerminalDashboard() {
   const bnkPts = Number(topStocks.filter((s: any) => s.sector.includes("BANK")).reduce((acc: number, s: any) => acc + s.imp, 0).toFixed(1)) || (selectedIndex === "BANK NIFTY" ? -297.4 : -112.5);
 
   const activeStockInfo = allStocks.find((s: any) => s.sym === selectedStock) || allStocks[0];
+
+  // Tab 1 Order Placement Handler
+  const handleTab1Execute = async (buySide: "CE" | "PE") => {
+    const ltpEstimate = selectedIndex === "BANK NIFTY" ? 167.95 : 23.89;
+    setTab1OrderMsg(`Transmitting ${selectedIndex} ${selStrike} ${buySide}...`);
+    try {
+      const payload = {
+        symbol: selectedIndex,
+        strike: `${selStrike} ${buySide}`,
+        type: buySide,
+        entry_price: ltpEstimate,
+        target_price: Number((ltpEstimate * 1.382).toFixed(2)),
+        sl_price: Number((ltpEstimate * 0.85).toFixed(2)),
+        lots: tab1Lots,
+        is_paper: tab1PaperMode,
+      };
+
+      const res = await fetch("https://fii-pulse-pro-backend.onrender.com/api/trade/execute-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        const resData = await res.json();
+        setTab1OrderMsg(resData.msg || "Order Placed Successfully!");
+      } else {
+        setTab1OrderMsg(tab1PaperMode ? `🟢 [PAPER FILLED] ${selectedIndex} ${selStrike} ${buySide} (${tab1Lots} Lots)` : "❌ Dhan Gateway Failed!");
+      }
+    } catch (e) {
+      setTab1OrderMsg(tab1PaperMode ? `🟢 [PAPER FILLED] ${selectedIndex} ${selStrike} ${buySide} (${tab1Lots} Lots)` : "❌ Connection Timeout!");
+    }
+  };
 
   return (
     <div className="flex min-h-screen bg-[#030712] text-slate-200 font-mono select-none">
@@ -915,9 +944,10 @@ export default function TerminalDashboard() {
           </button>
         </div>
 
-        {/* ----------------- TAB 1: EXECUTIVE DESK ----------------- */}
+        {/* ----------------- TAB 1: EXECUTIVE DESK (EXECUTION ENABLED) ----------------- */}
         {(currentTab === "tab1" || currentTab === "both") && (
           <div className="space-y-2">
+            {/* 4 EXECUTIVE METRICS */}
             <div className="grid grid-cols-4 gap-2">
               <div className="rounded-lg border border-slate-800 bg-[#070e1e] p-2.5 shadow-md">
                 <div className="text-[10px] font-black text-[#38bdf8] uppercase">⚖️ WAR ENGINE</div>
@@ -945,23 +975,24 @@ export default function TerminalDashboard() {
               </div>
             </div>
 
+            {/* DUAL OI VELOCITY & DHAN 1-CLICK STRIKE EXECUTION CARD */}
             <div className="grid grid-cols-12 gap-2">
               <div className="col-span-6 rounded-lg border border-slate-800 bg-[#070e1e] p-2.5">
                 <div className="text-xs font-black text-[#38bdf8] mb-1">
                   📊 6-STRIKES OI VELOCITY (ATM {curAtm})
                 </div>
-                <div className="h-32 flex items-center justify-around gap-2 px-2 pt-2">
+                <div className="h-36 flex items-center justify-around gap-2 px-2 pt-2">
                   {[-2, -1, 0, 1, 2, 3].map((off, i) => {
                     const stVal = curAtm + off * step;
                     const ceH = [25, 45, 90, 60, 35, 15][i];
                     const peH = [10, 75, 40, 20, 10, 5][i];
                     return (
                       <div key={i} className="flex flex-col items-center flex-1 h-full justify-center">
-                        <div className="w-full flex justify-center items-end h-12">
+                        <div className="w-full flex justify-center items-end h-14">
                           <div className="w-3.5 bg-rose-500 rounded-t" style={{ height: `${ceH}%` }} />
                         </div>
                         <div className="w-full border-t border-slate-700" />
-                        <div className="w-full flex justify-center items-start h-12">
+                        <div className="w-full flex justify-center items-start h-14">
                           <div className="w-3.5 bg-cyan-400 rounded-b" style={{ height: `${peH}%` }} />
                         </div>
                         <span className="text-[9px] text-slate-400 mt-1 font-bold">{(stVal / 1000).toFixed(2)}k</span>
@@ -971,28 +1002,48 @@ export default function TerminalDashboard() {
                 </div>
               </div>
 
+              {/* TAB 1 EXECUTION DASHBOARD CARD */}
               <div className="col-span-6 rounded-lg border border-slate-800 bg-[#070e1e] p-2.5 flex flex-col justify-between">
-                <div className="text-xs font-black text-[#38bdf8] mb-1">
-                  🎯 {selectedIndex} STRIKE SELECTOR (±12 STRIKES)
+                <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-1.5">
+                  <span className="text-xs font-black text-[#38bdf8]">
+                    🎯 {selectedIndex} STRIKE EXECUTION
+                  </span>
+
+                  {/* Mode Toggle Switch */}
+                  <div className="flex items-center bg-[#0c172e] border border-slate-700 rounded p-0.5">
+                    <button
+                      onClick={() => setTab1PaperMode(true)}
+                      className={`px-2 py-0.5 text-[10px] font-bold rounded ${tab1PaperMode ? "bg-emerald-600 text-white" : "text-slate-400"}`}
+                    >
+                      🟢 PAPER
+                    </button>
+                    <button
+                      onClick={() => setTab1PaperMode(false)}
+                      className={`px-2 py-0.5 text-[10px] font-bold rounded ${!tab1PaperMode ? "bg-rose-600 text-white" : "text-slate-400"}`}
+                    >
+                      🔴 REAL
+                    </button>
+                  </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+
+                <div className="grid grid-cols-3 gap-2 mb-1.5">
                   <div>
-                    <label className="text-[10px] text-slate-400 font-bold block mb-1">Option Type</label>
+                    <label className="text-[9px] text-slate-400 font-bold block mb-1">Option Type</label>
                     <select
                       value={selOptionType}
                       onChange={(e) => setSelOptionType(e.target.value as any)}
-                      className="w-full rounded border border-[#0284c7] bg-[#0c172e] p-1.5 text-xs font-bold text-white outline-none cursor-pointer"
+                      className="w-full rounded border border-[#0284c7] bg-[#0c172e] p-1 text-xs font-bold text-white outline-none cursor-pointer"
                     >
                       <option value="PE">PE (PUT)</option>
                       <option value="CE">CE (CALL)</option>
                     </select>
                   </div>
                   <div>
-                    <label className="text-[10px] text-slate-400 font-bold block mb-1">Select Strike</label>
+                    <label className="text-[9px] text-slate-400 font-bold block mb-1">Select Strike</label>
                     <select
                       value={selStrike}
                       onChange={(e) => setSelStrike(Number(e.target.value))}
-                      className="w-full rounded border border-[#0284c7] bg-[#0c172e] p-1.5 text-xs font-bold text-white outline-none cursor-pointer"
+                      className="w-full rounded border border-[#0284c7] bg-[#0c172e] p-1 text-xs font-bold text-white outline-none cursor-pointer"
                     >
                       {availableStrikes.map((stk: number) => (
                         <option key={stk} value={stk}>
@@ -1001,28 +1052,58 @@ export default function TerminalDashboard() {
                       ))}
                     </select>
                   </div>
+                  <div>
+                    <label className="text-[9px] text-slate-400 font-bold block mb-1">Lot Size</label>
+                    <select
+                      value={tab1Lots}
+                      onChange={(e) => setTab1Lots(Number(e.target.value))}
+                      className="w-full rounded border border-[#0284c7] bg-[#0c172e] p-1 text-xs font-bold text-white outline-none cursor-pointer"
+                    >
+                      <option value={1}>1 Lot ({activeIndexConfig.lot_size} Qty)</option>
+                      <option value={2}>2 Lots ({activeIndexConfig.lot_size * 2} Qty)</option>
+                      <option value={4}>4 Lots ({activeIndexConfig.lot_size * 4} Qty)</option>
+                      <option value={10}>10 Lots ({activeIndexConfig.lot_size * 10} Qty)</option>
+                    </select>
+                  </div>
                 </div>
 
-                <div className="rounded border-2 border-cyan-500 bg-[#0c1833] p-2 mt-2">
-                  <div className="text-sm font-black text-white">
-                    🎯 {selStrike} {selOptionType} LTP: ₹{selectedIndex === "BANK NIFTY" ? "167.95" : "23.89"}
+                <div className="rounded border border-cyan-500 bg-[#0c1833] p-1.5 mb-1.5">
+                  <div className="text-xs font-black text-white flex justify-between">
+                    <span>🎯 {selStrike} {selOptionType} LTP: ₹{selectedIndex === "BANK NIFTY" ? "167.95" : "23.89"}</span>
+                    <span className="text-[#00e676]">▲ +16.4%</span>
                   </div>
-                  <div className="text-[10px] text-[#00e676] font-bold">
-                    ▲ +16.4% | IV: 14.5% | Delta: 0.33 | Vol: 4.26 L
+                  <div className="text-[9px] text-cyan-300">
+                    Delta: 0.33 | IV: 14.5% | Total: ₹{((selectedIndex === "BANK NIFTY" ? 167.95 : 23.89) * (activeIndexConfig.lot_size * tab1Lots)).toFixed(2)}
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                  <button className="rounded border border-rose-500 bg-rose-600 py-1.5 text-xs font-black text-white shadow-md hover:bg-rose-700">
-                    🩸 BUY {selStrike} PE
+                {/* 1-Click Execution Buttons */}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => handleTab1Execute("PE")}
+                    className="rounded border border-rose-500 bg-rose-600 py-1.5 text-xs font-black text-white shadow-md hover:bg-rose-700 active:scale-95 transition-all"
+                  >
+                    🩸 {tab1PaperMode ? "PAPER BUY" : "DHAN BUY"} {selStrike} PE
                   </button>
-                  <button className="rounded border border-cyan-500 bg-cyan-600 py-1.5 text-xs font-black text-white shadow-md hover:bg-cyan-700">
-                    🚀 BUY {selStrike} CE
+                  <button
+                    onClick={() => handleTab1Execute("CE")}
+                    className="rounded border border-cyan-500 bg-cyan-600 py-1.5 text-xs font-black text-white shadow-md hover:bg-cyan-700 active:scale-95 transition-all"
+                  >
+                    🚀 {tab1PaperMode ? "PAPER BUY" : "DHAN BUY"} {selStrike} CE
                   </button>
                 </div>
+
+                {/* Order Feedback Status Alert */}
+                {tab1OrderMsg && (
+                  <div className="mt-1.5 rounded border border-emerald-500 bg-emerald-950/80 px-2 py-1 text-[10px] font-bold text-emerald-300 flex justify-between items-center">
+                    <span>{tab1OrderMsg}</span>
+                    <button onClick={() => setTab1OrderMsg(null)} className="text-slate-400 hover:text-white ml-2">✕</button>
+                  </div>
+                )}
               </div>
             </div>
 
+            {/* LOWER COCKPIT: DYNAMIC SELECTED STOCK CHART & 4-TIER HUD */}
             <div className="grid grid-cols-12 gap-2">
               <div className="col-span-8 space-y-2">
                 <div className="rounded-lg border border-slate-800 bg-[#060c1a] p-2.5 shadow-md">
@@ -1034,6 +1115,7 @@ export default function TerminalDashboard() {
                   <TradingViewChart />
                 </div>
 
+                {/* 4-TIER ORDER FLOW MATRIX HUD */}
                 <div className="overflow-hidden rounded-lg border-2 border-sky-600 bg-[#060c1a] shadow-[0_0_15px_rgba(2,132,199,0.3)]">
                   <div className="bg-[#0c1833] border-b border-sky-600 px-3 py-1.5 text-xs font-black text-[#38bdf8] flex justify-between">
                     <span>⚡ 4-TIER ORDER FLOW MATRIX HUD (DIRECT TICK FEED)</span>
@@ -1087,6 +1169,7 @@ export default function TerminalDashboard() {
                 </div>
               </div>
 
+              {/* RHS Heavyweights Table */}
               <div className="col-span-4 rounded-lg border border-slate-800 bg-[#060c1a] p-2.5 shadow-md flex flex-col justify-between">
                 <div>
                   <div className="text-xs font-black text-[#38bdf8] border-b border-slate-800 pb-1.5 mb-1.5">
