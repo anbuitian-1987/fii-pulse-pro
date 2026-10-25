@@ -1,7 +1,8 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState, useRef, useMemo } from "react";
 import TradingViewChart from "@/components/TradingViewChart";
+import FibonacciCalculator from "@/components/FibonacciCalculator";
 
 // 1. COMPLETE MASTER CONSTITUENTS DATABASE: NIFTY 50 (50), BANK NIFTY (12), BSE SENSEX (30)
 const MASTER_INDICES: Record<string, any> = {
@@ -439,6 +440,13 @@ export default function TerminalDashboard() {
               <strong className="text-rose-500">{belowVwapCount}/{totalTopCount} BELOW</strong>
             </div>
           </div>
+        </div>
+
+        {/* ========================================================= */}
+        {/* INSTITUTIONAL ADD-ON: FIBONACCI T1 TO T6 TARGET ENGINE   */}
+        {/* ========================================================= */}
+        <div className="my-2">
+          <FibonacciCalculator />
         </div>
 
         {/* NAVIGATION BUTTONS */}
