@@ -1,7 +1,9 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState, useRef, useMemo } from "react";
 import TradingViewChart from "@/components/TradingViewChart";
+import FibonacciCalculator from "@/components/FibonacciCalculator";
+import StockScreener from "@/components/StockScreener";
 
 // 1. COMPLETE MASTER CONSTITUENTS DATABASE: NIFTY 50 (50), BANK NIFTY (12), BSE SENSEX (30)
 const MASTER_INDICES: Record<string, any> = {
@@ -122,7 +124,10 @@ export default function TerminalDashboard() {
   const [isConnected, setIsConnected] = useState(true);
   const [selectedStock, setSelectedStock] = useState("INFY");
   const [refreshRate, setRefreshRate] = useState(2);
-  const [currentTab, setCurrentTab] = useState<"tab1" | "tab2" | "both">("tab1");
+  const [currentTab, setCurrentTab] = useState<"tab1" | "tab2" | "tab3" | "both">("tab1");
+
+  // State to pass selected breakout stock data to Fibonacci Calculator
+  const [fibAutoData, setFibAutoData] = useState<{ symbol: string; trigger: number; sl: number; type: "CE" | "PE" } | null>(null);
 
   const activeIndexConfig = MASTER_INDICES[selectedIndex] || MASTER_INDICES["NIFTY 50"];
   const [selOptionType, setSelOptionType] = useState<"PE" | "CE">("PE");
@@ -441,7 +446,7 @@ export default function TerminalDashboard() {
           </div>
         </div>
 
-        {/* NAVIGATION BUTTONS */}
+        {/* ----------------- 3-TAB NAVIGATION BAR ----------------- */}
         <div className="flex gap-2">
           <button
             onClick={() => setCurrentTab("tab1")}
@@ -461,7 +466,17 @@ export default function TerminalDashboard() {
                 : "border border-slate-800 bg-[#081226] text-slate-400 hover:text-white"
             }`}
           >
-            📋 TAB 2: FULL CONSTITUENTS MATRIX ({allStocks.length} STOCKS)
+            📋 TAB 2: FULL MATRIX ({allStocks.length} STOCKS)
+          </button>
+          <button
+            onClick={() => setCurrentTab("tab3")}
+            className={`flex-1 rounded py-1.5 text-xs font-black transition-all ${
+              currentTab === "tab3"
+                ? "bg-cyan-500 text-slate-950 shadow-[0_0_12px_rgba(6,182,212,0.5)]"
+                : "border border-slate-800 bg-[#081226] text-slate-400 hover:text-white"
+            }`}
+          >
+            ⚡ TAB 3: F&O BREAKOUT & FIBONACCI
           </button>
           <button
             onClick={() => setCurrentTab(currentTab === "both" ? "tab1" : "both")}
@@ -743,6 +758,14 @@ export default function TerminalDashboard() {
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+
+        {/* ----------------- TAB 3: LIVE F&O BREAKOUT & FIBONACCI ENGINE ----------------- */}
+        {currentTab === "tab3" && (
+          <div className="space-y-3">
+            <StockScreener onSelectStock={(stock) => setFibAutoData(stock)} />
+            <FibonacciCalculator initialData={fibAutoData} />
           </div>
         )}
       </main>
