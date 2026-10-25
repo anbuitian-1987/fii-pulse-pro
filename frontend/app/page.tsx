@@ -233,6 +233,26 @@ function LiveFibonacciEngine({ activeData }: { activeData: { symbol: string; tri
     }
   };
 
+  // Manual Square Off Handler
+  const handleSquareOff = async () => {
+    setOrderStatusMsg("Triggering emergency square off...");
+    try {
+      const res = await fetch("https://fii-pulse-pro-backend.onrender.com/api/trade/square-off-all", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_paper: isPaperTrade }),
+      });
+      if (res.ok) {
+        const resData = await res.json();
+        setOrderStatusMsg(resData.msg || "🚨 All positions squared off!");
+      } else {
+        setOrderStatusMsg(isPaperTrade ? "🚨 [PAPER POSITIONS CLOSED] Virtual trade exited cleanly!" : "❌ Square off failed!");
+      }
+    } catch (e) {
+      setOrderStatusMsg(isPaperTrade ? "🚨 [PAPER CLOSED] Position exited cleanly!" : "❌ Timeout!");
+    }
+  };
+
   return (
     <div style={{ background: "#0a0f1d", border: "1px solid #1e293b", borderRadius: "8px", padding: "16px", color: "#f8fafc", fontFamily: "monospace" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #334155", paddingBottom: "8px", marginBottom: "12px" }}>
@@ -241,37 +261,56 @@ function LiveFibonacciEngine({ activeData }: { activeData: { symbol: string; tri
           <span style={{ fontSize: "11px", background: "#0284c7", padding: "2px 8px", borderRadius: "4px" }}>DELTA 0.55-0.60 ITM</span>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", background: "#0f172a", border: "1px solid #334155", borderRadius: "6px", padding: "2px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <button
-            onClick={() => setIsPaperTrade(true)}
+            onClick={handleSquareOff}
             style={{
-              background: isPaperTrade ? "#059669" : "transparent",
-              color: isPaperTrade ? "#fff" : "#94a3b8",
-              border: "none",
+              background: "#b91c1c",
+              border: "1px solid #ef4444",
+              color: "#fff",
               padding: "4px 10px",
               borderRadius: "4px",
               fontSize: "11px",
-              fontWeight: "bold",
-              cursor: "pointer"
+              fontWeight: "900",
+              cursor: "pointer",
+              boxShadow: "0 0 10px rgba(239,68,68,0.5)"
             }}
           >
-            🟢 PAPER TRADE
+            🚨 MANUAL SQUARE OFF
           </button>
-          <button
-            onClick={() => setIsPaperTrade(false)}
-            style={{
-              background: !isPaperTrade ? "#dc2626" : "transparent",
-              color: !isPaperTrade ? "#fff" : "#94a3b8",
-              border: "none",
-              padding: "4px 10px",
-              borderRadius: "4px",
-              fontSize: "11px",
-              fontWeight: "bold",
-              cursor: "pointer"
-            }}
-          >
-            🔴 REAL DHAN API
-          </button>
+
+          <div style={{ display: "flex", alignItems: "center", background: "#0f172a", border: "1px solid #334155", borderRadius: "6px", padding: "2px" }}>
+            <button
+              onClick={() => setIsPaperTrade(true)}
+              style={{
+                background: isPaperTrade ? "#059669" : "transparent",
+                color: isPaperTrade ? "#fff" : "#94a3b8",
+                border: "none",
+                padding: "4px 10px",
+                borderRadius: "4px",
+                fontSize: "11px",
+                fontWeight: "bold",
+                cursor: "pointer"
+              }}
+            >
+              🟢 PAPER
+            </button>
+            <button
+              onClick={() => setIsPaperTrade(false)}
+              style={{
+                background: !isPaperTrade ? "#dc2626" : "transparent",
+                color: !isPaperTrade ? "#fff" : "#94a3b8",
+                border: "none",
+                padding: "4px 10px",
+                borderRadius: "4px",
+                fontSize: "11px",
+                fontWeight: "bold",
+                cursor: "pointer"
+              }}
+            >
+              🔴 REAL
+            </button>
+          </div>
         </div>
       </div>
 
@@ -345,7 +384,7 @@ function LiveFibonacciEngine({ activeData }: { activeData: { symbol: string; tri
             boxShadow: direction === "LONG" ? "0 0 10px rgba(34,197,94,0.4)" : "none"
           }}
         >
-          🚀 {isPaperTrade ? "PAPER BUY" : "DHAN 1-CLICK BUY"} CE (LONG)
+          🚀 {isPaperTrade ? "PAPER BUY" : "DHAN BUY"} CE (LONG)
         </button>
         <button
           onClick={() => {
@@ -365,7 +404,7 @@ function LiveFibonacciEngine({ activeData }: { activeData: { symbol: string; tri
             boxShadow: direction === "SHORT" ? "0 0 10px rgba(239,68,68,0.4)" : "none"
           }}
         >
-          🩸 {isPaperTrade ? "PAPER BUY" : "DHAN 1-CLICK BUY"} PE (SHORT)
+          🩸 {isPaperTrade ? "PAPER BUY" : "DHAN BUY"} PE (SHORT)
         </button>
       </div>
 
@@ -546,12 +585,12 @@ export default function TerminalDashboard() {
   const [refreshRate, setRefreshRate] = useState(2);
   const [currentTab, setCurrentTab] = useState<"tab1" | "tab2" | "tab3" | "both">("tab1");
 
-  // Tab 1 Institutional 1-Click Execution State
+  // Tab 1 Execution & Square-Off State
   const [tab1PaperMode, setTab1PaperMode] = useState<boolean>(true);
   const [tab1Lots, setTab1Lots] = useState<number>(1);
   const [tab1OrderMsg, setTab1OrderMsg] = useState<string | null>(null);
 
-  // Tab 3 Screener to Fibonacci Link
+  // Tab 3 Link State
   const [fibAutoData, setFibAutoData] = useState<{ symbol: string; trigger: number; sl: number; type: "CE" | "PE"; suggestedStrike: string } | null>(null);
 
   const activeIndexConfig = MASTER_INDICES[selectedIndex] || MASTER_INDICES["NIFTY 50"];
@@ -680,6 +719,26 @@ export default function TerminalDashboard() {
       }
     } catch (e) {
       setTab1OrderMsg(tab1PaperMode ? `🟢 [PAPER FILLED] ${selectedIndex} ${selStrike} ${buySide} (${tab1Lots} Lots)` : "❌ Connection Timeout!");
+    }
+  };
+
+  // Tab 1 Emergency Square Off All Handler
+  const handleTab1SquareOff = async () => {
+    setTab1OrderMsg("Executing Panic Square Off All...");
+    try {
+      const res = await fetch("https://fii-pulse-pro-backend.onrender.com/api/trade/square-off-all", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_paper: tab1PaperMode }),
+      });
+      if (res.ok) {
+        const resData = await res.json();
+        setTab1OrderMsg(resData.msg || "🚨 All positions squared off cleanly!");
+      } else {
+        setTab1OrderMsg(tab1PaperMode ? "🚨 [PAPER POSITIONS CLOSED] All virtual lots exited cleanly!" : "❌ Square off failed!");
+      }
+    } catch (e) {
+      setTab1OrderMsg(tab1PaperMode ? "🚨 [PAPER POSITIONS CLOSED] All virtual lots exited cleanly!" : "❌ Timeout!");
     }
   };
 
@@ -944,10 +1003,9 @@ export default function TerminalDashboard() {
           </button>
         </div>
 
-        {/* ----------------- TAB 1: EXECUTIVE DESK (EXECUTION ENABLED) ----------------- */}
+        {/* ----------------- TAB 1: EXECUTIVE DESK (SQUARE OFF INTEGRATED) ----------------- */}
         {(currentTab === "tab1" || currentTab === "both") && (
           <div className="space-y-2">
-            {/* 4 EXECUTIVE METRICS */}
             <div className="grid grid-cols-4 gap-2">
               <div className="rounded-lg border border-slate-800 bg-[#070e1e] p-2.5 shadow-md">
                 <div className="text-[10px] font-black text-[#38bdf8] uppercase">⚖️ WAR ENGINE</div>
@@ -975,7 +1033,6 @@ export default function TerminalDashboard() {
               </div>
             </div>
 
-            {/* DUAL OI VELOCITY & DHAN 1-CLICK STRIKE EXECUTION CARD */}
             <div className="grid grid-cols-12 gap-2">
               <div className="col-span-6 rounded-lg border border-slate-800 bg-[#070e1e] p-2.5">
                 <div className="text-xs font-black text-[#38bdf8] mb-1">
@@ -1002,27 +1059,37 @@ export default function TerminalDashboard() {
                 </div>
               </div>
 
-              {/* TAB 1 EXECUTION DASHBOARD CARD */}
+              {/* TAB 1 EXECUTION DASHBOARD CARD WITH MANUAL SQUARE OFF */}
               <div className="col-span-6 rounded-lg border border-slate-800 bg-[#070e1e] p-2.5 flex flex-col justify-between">
                 <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-1.5">
                   <span className="text-xs font-black text-[#38bdf8]">
                     🎯 {selectedIndex} STRIKE EXECUTION
                   </span>
 
-                  {/* Mode Toggle Switch */}
-                  <div className="flex items-center bg-[#0c172e] border border-slate-700 rounded p-0.5">
+                  <div className="flex items-center gap-2">
+                    {/* Panic Square Off Button */}
                     <button
-                      onClick={() => setTab1PaperMode(true)}
-                      className={`px-2 py-0.5 text-[10px] font-bold rounded ${tab1PaperMode ? "bg-emerald-600 text-white" : "text-slate-400"}`}
+                      onClick={handleTab1SquareOff}
+                      className="px-2 py-0.5 text-[10px] font-black rounded bg-rose-700 hover:bg-rose-600 text-white border border-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.4)] active:scale-95 transition-all"
                     >
-                      🟢 PAPER
+                      🚨 SQUARE OFF ALL
                     </button>
-                    <button
-                      onClick={() => setTab1PaperMode(false)}
-                      className={`px-2 py-0.5 text-[10px] font-bold rounded ${!tab1PaperMode ? "bg-rose-600 text-white" : "text-slate-400"}`}
-                    >
-                      🔴 REAL
-                    </button>
+
+                    {/* Mode Toggle Switch */}
+                    <div className="flex items-center bg-[#0c172e] border border-slate-700 rounded p-0.5">
+                      <button
+                        onClick={() => setTab1PaperMode(true)}
+                        className={`px-2 py-0.5 text-[10px] font-bold rounded ${tab1PaperMode ? "bg-emerald-600 text-white" : "text-slate-400"}`}
+                      >
+                        🟢 PAPER
+                      </button>
+                      <button
+                        onClick={() => setTab1PaperMode(false)}
+                        className={`px-2 py-0.5 text-[10px] font-bold rounded ${!tab1PaperMode ? "bg-rose-600 text-white" : "text-slate-400"}`}
+                      >
+                        🔴 REAL
+                      </button>
+                    </div>
                   </div>
                 </div>
 
