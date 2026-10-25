@@ -3,6 +3,9 @@
 import { useEffect, useState, useRef, useMemo } from "react";
 import TradingViewChart from "@/components/TradingViewChart";
 
+// ==============================================================================
+// 1. EMBEDDED INLINE INSTITUTIONAL F&O BREAKOUT SCREENER (TOP 20 STOCKS)
+// ==============================================================================
 interface ScoredStock {
   symbol: string;
   cmp: number;
@@ -132,6 +135,9 @@ function StockScreener({ onSelectStock }: StockScreenerProps) {
   );
 }
 
+// ==============================================================================
+// 2. EMBEDDED DYNAMIC FIBONACCI TARGET ENGINE WITH IOC FALLBACK ARMOR
+// ==============================================================================
 interface FibTargets {
   T1_382: number;
   T2_618: number;
@@ -458,6 +464,9 @@ function LiveFibonacciEngine({ activeData }: { activeData: { symbol: string; tri
   );
 }
 
+// ==============================================================================
+// 3. MASTER CONSTITUENTS DATABASE: NIFTY (LOT 65), BANK NIFTY (LOT 30), SENSEX (LOT 20)
+// ==============================================================================
 const MASTER_INDICES: Record<string, any> = {
   "NIFTY 50": {
     sec_id: 13, step: 50, lot_size: 65, fallback_cmp: 22600.00, fallback_prev: 22687.65, top_limit: 15,
@@ -920,6 +929,17 @@ export default function TerminalDashboard() {
             <span className="text-sm font-black text-[#38bdf8] tracking-wide">
               🚨 EXHAUSTION REVERSAL (ABSORPTION DIVERGENCE ACTIVE)
             </span>
+
+            {/* HMM Quantitative Latent State Badge */}
+            {data?.hmm && (
+              <span className={`px-2 py-0.5 rounded text-[10px] font-black border ${
+                data.hmm.state_idx === 0 ? "bg-emerald-950 border-emerald-500 text-emerald-300" :
+                data.hmm.state_idx === 2 ? "bg-rose-950 border-rose-500 text-rose-300" :
+                "bg-amber-950 border-amber-500 text-amber-300"
+              }`}>
+                🧠 HMM: {data.hmm.regime} ({data.hmm.confidence}%)
+              </span>
+            )}
 
             <span className={`px-2 py-0.5 rounded text-[10px] font-black border ${
               indiaVix > 15 ? "bg-amber-950 border-amber-500 text-amber-300" :
