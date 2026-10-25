@@ -3,9 +3,6 @@
 import { useEffect, useState, useRef, useMemo } from "react";
 import TradingViewChart from "@/components/TradingViewChart";
 
-// ==============================================================================
-// 1. EMBEDDED INLINE INSTITUTIONAL F&O BREAKOUT SCREENER (TOP 20 STOCKS)
-// ==============================================================================
 interface ScoredStock {
   symbol: string;
   cmp: number;
@@ -135,9 +132,6 @@ function StockScreener({ onSelectStock }: StockScreenerProps) {
   );
 }
 
-// ==============================================================================
-// 2. EMBEDDED DYNAMIC FIBONACCI TARGET ENGINE WITH IOC FALLBACK ARMOR
-// ==============================================================================
 interface FibTargets {
   T1_382: number;
   T2_618: number;
@@ -464,9 +458,6 @@ function LiveFibonacciEngine({ activeData }: { activeData: { symbol: string; tri
   );
 }
 
-// ==============================================================================
-// 3. MASTER CONSTITUENTS DATABASE: NIFTY (LOT 65), BANK NIFTY (LOT 30), SENSEX (LOT 20)
-// ==============================================================================
 const MASTER_INDICES: Record<string, any> = {
   "NIFTY 50": {
     sec_id: 13, step: 50, lot_size: 65, fallback_cmp: 22600.00, fallback_prev: 22687.65, top_limit: 15,
@@ -587,7 +578,6 @@ export default function TerminalDashboard() {
   const [refreshRate, setRefreshRate] = useState(2);
   const [currentTab, setCurrentTab] = useState<"tab1" | "tab2" | "tab3" | "both">("tab1");
 
-  // V63 New Missing Pieces State
   const [indiaVix, setIndiaVix] = useState<number>(13.45);
   const [isQuarantineTime, setIsQuarantineTime] = useState<boolean>(false);
   const [isPowerHour, setIsPowerHour] = useState<boolean>(false);
@@ -665,12 +655,9 @@ export default function TerminalDashboard() {
   const spotChg = Number((spotCmp - spotPrev).toFixed(2));
   const spotPct = Number(((spotChg / spotPrev) * 100).toFixed(2));
 
-  // Prior Day Value Area Anchor Targets
   const yPOC = Number((spotPrev - 12.0).toFixed(2));
   const yVAH = Number((spotPrev + 28.0).toFixed(2));
   const yVAL = Number((spotPrev - 45.0).toFixed(2));
-
-  // 02:45 PM Power Hour PM-POC Anchor
   const pmPOC = data?.auction?.pm_anchor?.pm_poc || Number((spotCmp - 4.0).toFixed(2));
 
   const step = activeIndexConfig.step;
@@ -721,7 +708,6 @@ export default function TerminalDashboard() {
 
   const activeStockInfo = allStocks.find((s: any) => s.sym === selectedStock) || allStocks[0];
 
-  // Missing Piece 4: Order Execution with IOC + 3s Auto-Cancel Fallback
   const handleTab1Execute = async (buySide: "CE" | "PE") => {
     const ltpEstimate = selectedIndex === "BANK NIFTY" ? 167.95 : 23.89;
     const limitCap = Number((ltpEstimate * 1.005).toFixed(2));
@@ -862,7 +848,6 @@ export default function TerminalDashboard() {
 
         <div className="h-[1px] bg-slate-800" />
 
-        {/* Missing Piece 3: Macro Cross-Market Engine Sidebar Box */}
         <div className="space-y-2">
           <div className="text-[11px] font-black text-amber-400 flex items-center gap-1">
             🌐 <span>MACRO CROSS-MARKET ENGINE</span>
@@ -888,7 +873,6 @@ export default function TerminalDashboard() {
 
         <div className="h-[1px] bg-slate-800" />
 
-        {/* Live Chart Stock Selector */}
         <div className="space-y-3">
           <div className="text-[11px] font-black text-white flex items-center gap-1">
             📈 <span className="text-[#38bdf8]">LIVE CHART SELECTOR</span>
@@ -931,14 +915,12 @@ export default function TerminalDashboard() {
 
       {/* ----------------- 3. MAIN COCKPIT WORKSPACE ----------------- */}
       <main className="flex-1 p-3 overflow-y-auto space-y-2">
-        {/* TOP NEON EXHAUSTION BAR + INDIA VIX & REGIME BADGES */}
         <div className="flex items-center justify-between rounded-lg border-2 border-cyan-500 bg-gradient-to-r from-cyan-950/40 via-[#070e1e] to-rose-950/40 px-4 py-2 shadow-[0_0_15px_rgba(6,182,212,0.4)]">
           <div className="flex items-center gap-2">
             <span className="text-sm font-black text-[#38bdf8] tracking-wide">
               🚨 EXHAUSTION REVERSAL (ABSORPTION DIVERGENCE ACTIVE)
             </span>
 
-            {/* Missing Piece 1: India VIX & Greek Convexity Status */}
             <span className={`px-2 py-0.5 rounded text-[10px] font-black border ${
               indiaVix > 15 ? "bg-amber-950 border-amber-500 text-amber-300" :
               indiaVix < 12 ? "bg-rose-950 border-rose-500 text-rose-300" :
@@ -947,14 +929,12 @@ export default function TerminalDashboard() {
               📊 INDIA VIX: {indiaVix.toFixed(2)} ({indiaVix < 12 ? "⚠️ THETA CRUSH" : "NORMAL IV"})
             </span>
 
-            {/* Missing Piece 2: 02:45 PM Power-Hour Trigger */}
             {isPowerHour && (
               <span className="px-2 py-0.5 rounded text-[10px] font-black bg-pink-700 text-white animate-pulse border border-pink-400">
                 ⚡ 02:45 PM POWER-HOUR ACTIVE (PM-POC SQUEEZE)
               </span>
             )}
 
-            {/* Algo Quarantine Window */}
             {isQuarantineTime && (
               <span className="px-2 py-0.5 rounded text-[10px] font-black bg-rose-600 text-white animate-pulse border border-rose-400">
                 🛑 LUNCH-TIME CHOP LOCKDOWN (NO FRESH TRADES)
@@ -972,7 +952,6 @@ export default function TerminalDashboard() {
           </div>
         </div>
 
-        {/* SCENARIO CLASSIFIER BANNER */}
         <div className="flex items-center justify-between rounded-lg border border-cyan-500 bg-[#08142c] px-4 py-2 shadow-[0_0_14px_rgba(6,182,212,0.3)]">
           <div>
             <span className="text-[10px] text-slate-400 font-bold">ACTIVE MARKET REGIME:</span>
@@ -988,7 +967,6 @@ export default function TerminalDashboard() {
           </div>
         </div>
 
-        {/* 6-CARD AUCTION ANCHORS + POWER-HOUR PM-POC ANCHOR */}
         <div className="grid grid-cols-6 gap-2">
           <div className="rounded-md border border-slate-800 bg-[#0b1730] p-1.5 text-center">
             <div className="text-[9px] text-slate-400 font-bold">1. C1 HIGH (09:18)</div>
@@ -1010,7 +988,6 @@ export default function TerminalDashboard() {
             <div className="text-[9px] text-slate-400 font-bold">5. C1 LOW (09:18)</div>
             <div className="text-sm font-black text-rose-500">₹{(spotCmp - 22.0).toFixed(2)}</div>
           </div>
-          {/* Missing Piece 2: 02:45 PM PM-POC Anchor or Prior Day POC */}
           <div className="rounded-md border border-purple-800 bg-[#160d2e] p-1.5 text-center">
             <div className="text-[9px] text-purple-300 font-bold">{isPowerHour ? "⚡ PM-POC (02:45)" : "6. YESTERDAY POC"}</div>
             <div className="text-sm font-black text-purple-400">₹{isPowerHour ? pmPOC : yPOC}</div>
@@ -1018,7 +995,6 @@ export default function TerminalDashboard() {
           </div>
         </div>
 
-        {/* 6-POINT GOLDEN RULE CONFLUENCE HUD */}
         <div className="rounded-lg border-2 border-[#38bdf8] bg-[#081226] p-2.5 shadow-[0_0_16px_rgba(56,189,248,0.25)]">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-black text-[#38bdf8]">
@@ -1056,7 +1032,6 @@ export default function TerminalDashboard() {
           </div>
         </div>
 
-        {/* ----------------- 3-TAB NAVIGATION BAR ----------------- */}
         <div className="flex gap-2">
           <button
             onClick={() => setCurrentTab("tab1")}
@@ -1152,7 +1127,6 @@ export default function TerminalDashboard() {
                 </div>
               </div>
 
-              {/* TAB 1 EXECUTION DASHBOARD CARD WITH IOC SHIELD */}
               <div className="col-span-6 rounded-lg border border-slate-800 bg-[#070e1e] p-2.5 flex flex-col justify-between">
                 <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-1.5">
                   <span className="text-xs font-black text-[#38bdf8]">
@@ -1236,7 +1210,6 @@ export default function TerminalDashboard() {
                   </div>
                 </div>
 
-                {/* 1-Click Execution Buttons */}
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => handleTab1Execute("PE")}
@@ -1252,7 +1225,6 @@ export default function TerminalDashboard() {
                   </button>
                 </div>
 
-                {/* Order Feedback Status Alert */}
                 {tab1OrderMsg && (
                   <div className="mt-1.5 rounded border border-emerald-500 bg-emerald-950/80 px-2 py-1 text-[10px] font-bold text-emerald-300 flex justify-between items-center">
                     <span>{tab1OrderMsg}</span>
@@ -1262,7 +1234,6 @@ export default function TerminalDashboard() {
               </div>
             </div>
 
-            {/* LOWER COCKPIT: DYNAMIC SELECTED STOCK CHART & 4-TIER HUD */}
             <div className="grid grid-cols-12 gap-2">
               <div className="col-span-8 space-y-2">
                 <div className="rounded-lg border border-slate-800 bg-[#060c1a] p-2.5 shadow-md">
@@ -1274,7 +1245,6 @@ export default function TerminalDashboard() {
                   <TradingViewChart />
                 </div>
 
-                {/* 4-TIER ORDER FLOW MATRIX HUD WITH IV & IVP */}
                 <div className="overflow-hidden rounded-lg border-2 border-sky-600 bg-[#060c1a] shadow-[0_0_15px_rgba(2,132,199,0.3)]">
                   <div className="bg-[#0c1833] border-b border-sky-600 px-3 py-1.5 text-xs font-black text-[#38bdf8] flex justify-between">
                     <span>⚡ 4-TIER ORDER FLOW MATRIX HUD (DIRECT TICK FEED)</span>
@@ -1318,4 +1288,124 @@ export default function TerminalDashboard() {
                   </div>
                   <div className="grid grid-cols-7 px-3 py-2 text-xs border-b border-slate-900 bg-[#0a1c38] border-l-4 border-cyan-400 items-center">
                     <div className="font-black text-cyan-400">
-                      4. {selStrike} {selOptionType} <span className="text-[9px] text-amber-300 font-normal">(IV: 14.8 | IVP: 62
+                      4. {selStrike} {selOptionType} <span className="text-[9px] text-amber-300 font-normal">(IV: 14.8 | IVP: 62%)</span>
+                    </div>
+                    <div>4.26 L</div>
+                    <div className="text-[#00e676]">2.34 L</div>
+                    <div className="text-rose-500">1.92 L</div>
+                    <div className="text-slate-400">+0.0 k</div>
+                    <div className="font-bold text-[#00e676]">+4.3 k</div>
+                    <div className="font-bold text-[#00e676]">+0.07 Cr</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="col-span-4 rounded-lg border border-slate-800 bg-[#060c1a] p-2.5 shadow-md flex flex-col justify-between">
+                <div>
+                  <div className="text-xs font-black text-[#38bdf8] border-b border-slate-800 pb-1.5 mb-1.5">
+                    TOP {topLimit} IMPACT & CVD FLOW (-174.9 Cr)
+                  </div>
+                  <div className="grid grid-cols-5 text-[9px] font-bold text-slate-500 border-b border-slate-800 pb-1 mb-1">
+                    <div>SYMBOL(%)</div>
+                    <div>CHG</div>
+                    <div>IMPACT</div>
+                    <div>VWAP</div>
+                    <div>CVD(CR)</div>
+                  </div>
+                  <div className="space-y-1 max-h-[380px] overflow-y-auto pr-1">
+                    {topStocks.map((stk: any) => (
+                      <div
+                        key={stk.sym}
+                        onClick={() => setSelectedStock(stk.sym)}
+                        className={`grid grid-cols-5 text-[11px] py-1 border-b border-slate-900 items-center cursor-pointer transition-colors ${
+                          selectedStock === stk.sym ? "bg-cyan-950/60 text-cyan-300 font-bold" : "hover:bg-slate-900/60"
+                        }`}
+                      >
+                        <div>{stk.sym} <span className="text-[9px] text-slate-500">({stk.wt}%)</span></div>
+                        <div className={stk.chg >= 0 ? "text-[#00e676]" : "text-rose-500"}>
+                          {stk.chg >= 0 ? "+" : ""}{stk.chg.toFixed(1)}
+                        </div>
+                        <div className={stk.imp >= 0 ? "text-[#00e676]" : "text-rose-500"}>
+                          {stk.imp >= 0 ? "+" : ""}{stk.imp.toFixed(1)}p
+                        </div>
+                        <div className={stk.vwap === "UP" ? "text-[#00e676]" : "text-rose-500"}>
+                          {stk.vwap === "UP" ? "▲" : "▼"}
+                        </div>
+                        <div className={stk.cvd >= 0 ? "text-[#00e676] font-bold" : "text-rose-500 font-bold"}>
+                          {stk.cvd >= 0 ? "+" : ""}{stk.cvd.toFixed(1)}cr
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="text-[10px] text-slate-500 text-center pt-2 border-t border-slate-800">
+                  💡 Click any row to view its live chart
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ----------------- TAB 2: FULL CONSTITUENTS SCANNER (ALL 50/12/30) ----------------- */}
+        {(currentTab === "tab2" || currentTab === "both") && (
+          <div className="rounded-lg border border-slate-800 bg-[#060c1a] p-4 shadow-md">
+            <h3 className="text-sm font-black text-[#38bdf8] mb-3">
+              📋 FULL {selectedIndex} CONSTITUENTS MATRIX ({allStocks.length} STOCKS COMPLETE LIST)
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-slate-800 text-slate-400 text-[10px]">
+                    <th className="py-2">SYMBOL</th>
+                    <th>SECTOR</th>
+                    <th>WEIGHT</th>
+                    <th>LTP</th>
+                    <th>PREV CLOSE</th>
+                    <th>CHANGE</th>
+                    <th>IMPACT</th>
+                    <th>CVD FLOW</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allStocks.map((s: any) => (
+                    <tr
+                      key={s.sym}
+                      onClick={() => {
+                        setSelectedStock(s.sym);
+                        setCurrentTab("tab1");
+                      }}
+                      className="border-b border-slate-900 py-1.5 hover:bg-slate-900/50 cursor-pointer"
+                    >
+                      <td className="py-2 font-bold text-white">{s.sym}</td>
+                      <td className="text-slate-400">{s.sector}</td>
+                      <td>{s.wt}%</td>
+                      <td className="font-bold">₹{s.ltp.toFixed(2)}</td>
+                      <td className="text-slate-400">₹{s.prev.toFixed(2)}</td>
+                      <td className={s.chg >= 0 ? "text-[#00e676]" : "text-rose-500"}>
+                        {s.chg >= 0 ? "+" : ""}{s.chg.toFixed(2)}
+                      </td>
+                      <td className={s.imp >= 0 ? "text-[#00e676]" : "text-rose-500"}>
+                        {s.imp >= 0 ? "+" : ""}{s.imp.toFixed(2)} pts
+                      </td>
+                      <td className={s.cvd >= 0 ? "text-[#00e676] font-bold" : "text-rose-500 font-bold"}>
+                        {s.cvd >= 0 ? "+" : ""}{s.cvd.toFixed(1)} Cr
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* ----------------- TAB 3: LIVE F&O BREAKOUT & FIBONACCI ENGINE ----------------- */}
+        {currentTab === "tab3" && (
+          <div className="space-y-3">
+            <StockScreener onSelectStock={(stock) => setFibAutoData(stock)} />
+            <LiveFibonacciEngine activeData={fibAutoData} />
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
