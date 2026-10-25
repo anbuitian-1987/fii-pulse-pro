@@ -233,7 +233,6 @@ function LiveFibonacciEngine({ activeData }: { activeData: { symbol: string; tri
     }
   };
 
-  // Manual Square Off Handler
   const handleSquareOff = async () => {
     setOrderStatusMsg("Triggering emergency square off...");
     try {
@@ -357,10 +356,10 @@ function LiveFibonacciEngine({ activeData }: { activeData: { symbol: string; tri
             onChange={(e) => setLotCount(Number(e.target.value))}
             style={{ width: "100%", background: "#1e293b", border: "1px solid #475569", color: "#fff", padding: "6px", borderRadius: "4px", fontWeight: "bold" }}
           >
-            <option value={1}>1 Lot (25 Qty)</option>
-            <option value={2}>2 Lots (50 Qty)</option>
-            <option value={4}>4 Lots (100 Qty)</option>
-            <option value={10}>10 Lots (250 Qty)</option>
+            <option value={1}>1 Lot</option>
+            <option value={2}>2 Lots</option>
+            <option value={4}>4 Lots</option>
+            <option value={10}>10 Lots</option>
           </select>
         </div>
       </div>
@@ -463,11 +462,11 @@ function LiveFibonacciEngine({ activeData }: { activeData: { symbol: string; tri
 }
 
 // ==============================================================================
-// 3. MASTER CONSTITUENTS DATABASE: NIFTY 50 (50), BANK NIFTY (12), BSE SENSEX (30)
+// 3. MASTER CONSTITUENTS DATABASE: NIFTY (LOT 65), BANK NIFTY (LOT 30), SENSEX (LOT 20)
 // ==============================================================================
 const MASTER_INDICES: Record<string, any> = {
   "NIFTY 50": {
-    sec_id: 13, step: 50, lot_size: 25, fallback_cmp: 22600.00, fallback_prev: 22687.65, top_limit: 15,
+    sec_id: 13, step: 50, lot_size: 65, fallback_cmp: 22600.00, fallback_prev: 22687.65, top_limit: 15,
     constituents: [
       { Symbol: "HDFCBANK", SecId: 1333, Sector: "BANK", Weight: 10.54, ltp: 694.05, prev: 706.95 },
       { Symbol: "ICICIBANK", SecId: 4963, Sector: "BANK", Weight: 8.81, ltp: 1398.50, prev: 1385.00 },
@@ -715,10 +714,10 @@ export default function TerminalDashboard() {
         const resData = await res.json();
         setTab1OrderMsg(resData.msg || "Order Placed Successfully!");
       } else {
-        setTab1OrderMsg(tab1PaperMode ? `🟢 [PAPER FILLED] ${selectedIndex} ${selStrike} ${buySide} (${tab1Lots} Lots)` : "❌ Dhan Gateway Failed!");
+        setTab1OrderMsg(tab1PaperMode ? `🟢 [PAPER FILLED] ${selectedIndex} ${selStrike} ${buySide} (${tab1Lots * activeIndexConfig.lot_size} Qty)` : "❌ Dhan Gateway Failed!");
       }
     } catch (e) {
-      setTab1OrderMsg(tab1PaperMode ? `🟢 [PAPER FILLED] ${selectedIndex} ${selStrike} ${buySide} (${tab1Lots} Lots)` : "❌ Connection Timeout!");
+      setTab1OrderMsg(tab1PaperMode ? `🟢 [PAPER FILLED] ${selectedIndex} ${selStrike} ${buySide} (${tab1Lots * activeIndexConfig.lot_size} Qty)` : "❌ Connection Timeout!");
     }
   };
 
@@ -1003,7 +1002,7 @@ export default function TerminalDashboard() {
           </button>
         </div>
 
-        {/* ----------------- TAB 1: EXECUTIVE DESK (SQUARE OFF INTEGRATED) ----------------- */}
+        {/* ----------------- TAB 1: EXECUTIVE DESK (SQUARE OFF & LOT UPDATE INTEGRATED) ----------------- */}
         {(currentTab === "tab1" || currentTab === "both") && (
           <div className="space-y-2">
             <div className="grid grid-cols-4 gap-2">
@@ -1059,7 +1058,7 @@ export default function TerminalDashboard() {
                 </div>
               </div>
 
-              {/* TAB 1 EXECUTION DASHBOARD CARD WITH MANUAL SQUARE OFF */}
+              {/* TAB 1 EXECUTION DASHBOARD CARD */}
               <div className="col-span-6 rounded-lg border border-slate-800 bg-[#070e1e] p-2.5 flex flex-col justify-between">
                 <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-1.5">
                   <span className="text-xs font-black text-[#38bdf8]">
@@ -1067,7 +1066,6 @@ export default function TerminalDashboard() {
                   </span>
 
                   <div className="flex items-center gap-2">
-                    {/* Panic Square Off Button */}
                     <button
                       onClick={handleTab1SquareOff}
                       className="px-2 py-0.5 text-[10px] font-black rounded bg-rose-700 hover:bg-rose-600 text-white border border-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.4)] active:scale-95 transition-all"
@@ -1075,7 +1073,6 @@ export default function TerminalDashboard() {
                       🚨 SQUARE OFF ALL
                     </button>
 
-                    {/* Mode Toggle Switch */}
                     <div className="flex items-center bg-[#0c172e] border border-slate-700 rounded p-0.5">
                       <button
                         onClick={() => setTab1PaperMode(true)}
@@ -1140,7 +1137,7 @@ export default function TerminalDashboard() {
                     <span className="text-[#00e676]">▲ +16.4%</span>
                   </div>
                   <div className="text-[9px] text-cyan-300">
-                    Delta: 0.33 | IV: 14.5% | Total: ₹{((selectedIndex === "BANK NIFTY" ? 167.95 : 23.89) * (activeIndexConfig.lot_size * tab1Lots)).toFixed(2)}
+                    Lot: {activeIndexConfig.lot_size} | Delta: 0.33 | Total Qty: {activeIndexConfig.lot_size * tab1Lots} | Premium: ₹{((selectedIndex === "BANK NIFTY" ? 167.95 : 23.89) * (activeIndexConfig.lot_size * tab1Lots)).toFixed(2)}
                   </div>
                 </div>
 
