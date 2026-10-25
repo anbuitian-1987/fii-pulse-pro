@@ -3,13 +3,15 @@ import os
 import datetime
 import requests
 import json
+import math
+import numpy as np
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="Universal Institutional Terminal V63 Iron Fortress Master Engine")
+app = FastAPI(title="Universal Institutional Terminal V63 Iron Fortress + HMM Engine")
 
 app.add_middleware(
     CORSMiddleware,
@@ -36,7 +38,71 @@ if os.path.exists(env_path):
                 elif k == "DHAN_ACCESS_TOKEN": ACCESS_TOKEN = v
 
 # ==============================================================================
-# 2. MASTER CONSTITUENTS DATABASE: NIFTY (LOT 65), BANK NIFTY (LOT 30), SENSEX (LOT 20)
+# 2. PURE NUMPY GAUSSIAN HIDDEN MARKOV MODEL (HMM) ENGINE (ZERO-DEPENDENCY)
+# ==============================================================================
+class LightweightGaussianHMM:
+    """
+    3-State Quantitative Hidden Markov Model:
+    State 0: Bullish Initiative (Positive returns, strong positive CVD, moderate vol)
+    State 1: Chop/Noise (Near-zero return, flat CVD, low vol -> Fake breakout trap)
+    State 2: Bearish Liquidation (Negative returns, strong negative CVD, high vol)
+    """
+    def __init__(self):
+        self.n_states = 3
+        # Baseline emission vectors: [LogReturn, NormCVD, RealizedVol]
+        self.means = np.array([
+            [0.0015, 0.60, 0.0010],   # State 0: Bullish
+            [0.0000, 0.00, 0.0006],   # State 1: Chop
+            [-0.0020, -0.65, 0.0020]  # State 2: Bearish
+        ])
+        self.vars = np.array([
+            [1e-5, 0.15, 1e-6],
+            [5e-6, 0.08, 5e-7],
+            [2e-5, 0.20, 2e-6]
+        ])
+        # Transition Probability Matrix (Persistence of institutional states)
+        self.trans_mat = np.array([
+            [0.85, 0.12, 0.03], # Bullish -> stays bullish or decays to chop
+            [0.15, 0.70, 0.15], # Chop -> stays chop or transitions on impulse
+            [0.03, 0.12, 0.85]  # Bearish -> stays bearish
+        ])
+        self.state_probs = np.array([0.25, 0.50, 0.25])
+        self.current_state = 1
+
+    def gaussian_pdf(self, x, mean, var):
+        denom = np.sqrt(2 * np.pi * var)
+        num = np.exp(-0.5 * ((x - mean) ** 2) / (var + 1e-9))
+        return float(np.prod(num / (denom + 1e-9)))
+
+    def infer_regime(self, obs_vector):
+        obs = np.array(obs_vector)
+        emissions = np.zeros(self.n_states)
+        for s in range(self.n_states):
+            emissions[s] = self.gaussian_pdf(obs, self.means[s], self.vars[s])
+        
+        prior = self.state_probs @ self.trans_mat
+        unnorm_posterior = prior * emissions
+        post_sum = np.sum(unnorm_posterior)
+        
+        if post_sum > 0:
+            self.state_probs = unnorm_posterior / post_sum
+        else:
+            self.state_probs = np.array([0.33, 0.34, 0.33])
+            
+        self.current_state = int(np.argmax(self.state_probs))
+        confidence = float(self.state_probs[self.current_state])
+        
+        state_labels = {
+            0: "BULLISH_INITIATIVE",
+            1: "CHOP_HIGH_ENTROPY",
+            2: "BEARISH_LIQUIDATION"
+        }
+        return self.current_state, state_labels[self.current_state], confidence, [round(float(p), 3) for p in self.state_probs]
+
+hmm_engine_instance = LightweightGaussianHMM()
+
+# ==============================================================================
+# 3. MASTER CONSTITUENTS DATABASE: NIFTY (LOT 65), BANK NIFTY (LOT 30), SENSEX (LOT 20)
 # ==============================================================================
 INDEX_CONFIGS = {
     "NIFTY 50": {
@@ -149,7 +215,7 @@ INDEX_CONFIGS = {
 }
 
 # ==============================================================================
-# 3. DYNAMIC STATE STORES & V63 MASTER COMPUTATION
+# 4. DYNAMIC STATE STORES & V63 MASTER COMPUTATION
 # ==============================================================================
 c1_anchors_store = {}
 pm_anchors_store = {}
@@ -157,6 +223,7 @@ hud_orderflow_state = {}
 tick_prev_volume = {}
 tick_cum_delta = {}
 last_active_candle_idx = 0
+prev_spot_tracker = {}
 
 def get_dynamic_3m_candle_status():
     now = datetime.datetime.now()
@@ -178,17 +245,11 @@ def is_algo_quarantine_active():
     return (690 <= total_mins <= 795)
 
 def is_power_hour_active():
-    """
-    Missing Piece 2: 02:45 PM to 03:30 PM Power-Hour Dynamic Volume Profile Window
-    """
     now = datetime.datetime.now()
     total_mins = now.hour * 60 + now.minute
     return (885 <= total_mins <= 930)
 
 def fetch_macro_cross_market():
-    """
-    Missing Piece 3: Macro Bias Engine (DXY, Brent Crude, US 10Y Yields)
-    """
     return {
         "dxy": {"val": 103.85, "chg": -0.15, "status": "🟢 FAVORABLE (INR SUPPORT)"},
         "brent_crude": {"val": 74.20, "chg": -0.85, "status": "🟢 COOLING (AUTO/PAINTS BIAS)"},
@@ -324,7 +385,6 @@ def execute_v62_master_computation(selected_index, chosen_chart_sym, sel_stk, se
     c1 = c1_anchors_store[selected_index]
     c1_h, c1_l, c1_vah, c1_val, c1_poc = c1["high"], c1["low"], c1["vah"], c1["val"], c1["poc"]
 
-    # Missing Piece 2: 02:45 PM Power Hour PM-POC Anchor
     power_hour = is_power_hour_active()
     if power_hour:
         if selected_index not in pm_anchors_store:
@@ -337,7 +397,6 @@ def execute_v62_master_computation(selected_index, chosen_chart_sym, sel_stk, se
     else:
         pm_anchor = None
 
-    # Prior Day Value Area Targets
     y_poc = round(spot_prev_close - 12.0, 2)
     y_vah = round(spot_prev_close + 28.0, 2)
     y_val = round(spot_prev_close - 45.0, 2)
@@ -430,9 +489,23 @@ def execute_v62_master_computation(selected_index, chosen_chart_sym, sel_stk, se
     t4_iv = t4_contract.get("iv", 14.8)
     t4_s, t4_cvd = compute_dynamic_tier_flow(f"t4_{selected_index}_{sel_stk}_{sel_side}", t4_vol if t4_vol > 0 else 426100, t4_chg, t4_ltp, +0.10, candle_has_reset)
 
-    # Missing Piece 1: IV Percentile (IVP) Guard
     iv_percentile = min(99, max(5, int((t4_iv / 24.0) * 100)))
     iv_crush_alert = (iv_percentile > 80 and spot_chg > 0 and t4_chg < 0)
+
+    # ==========================================================================
+    # HMM OBSERVATION VECTOR & REAL-TIME REGIME INFERENCE
+    # ==========================================================================
+    prev_spot_val = prev_spot_tracker.get(selected_index, spot_prev_close)
+    prev_spot_tracker[selected_index] = spot_cmp
+    
+    # 1. Log Return
+    log_return = math.log(max(1.0, spot_cmp) / max(1.0, prev_spot_val)) if prev_spot_val > 0 else 0.0
+    # 2. Normalized CVD Velocity
+    norm_cvd = math.tanh(t1_s["cum_delta"] / 50000.0)
+    # 3. Realized Volatility
+    realized_vol = abs(c1_h - c1_l) / max(1.0, dynamic_vwap)
+    
+    hmm_state_idx, hmm_label, hmm_conf, hmm_all_probs = hmm_engine_instance.infer_regime([log_return, norm_cvd, realized_vol])
 
     quarantine_active = is_algo_quarantine_active()
 
@@ -454,9 +527,10 @@ def execute_v62_master_computation(selected_index, chosen_chart_sym, sel_stk, se
     bullish_score = sum([is_r1_bull, is_r2_bull, is_r3_bull, is_r4_bull, is_r5_bull, is_r6_bull])
     bearish_score = sum([is_r1_bear, is_r2_bear, is_r3_bear, is_r4_bear, is_r5_bear, is_r6_bear])
 
-    if quarantine_active:
-        active_scenario = "SCENARIO 4: ALGO QUARANTINE CHOP (LUNCH-TIME SPREAD DRIFT)"
-        scenario_action = "🛑 LUNCH LOCKDOWN (11:30 - 01:15): THETA BLEED ACTIVE | AVOID FRESH ENTRIES"
+    # HMM Regime Overlap Check
+    if quarantine_active or (hmm_state_idx == 1 and hmm_conf > 0.65):
+        active_scenario = "SCENARIO 4: HMM HIGH-ENTROPY CHOP (NO DIRECTIONAL EDGE)"
+        scenario_action = f"🛑 HMM CHOP REGIME ({int(hmm_conf*100)}% CONF): AVOID FAKE BREAKOUTS | PRESERVE CAPITAL"
         scenario_color = "#f43f5e"
     elif power_hour and abs(t1_s["bar_delta"]) > 40000:
         active_scenario = "SCENARIO 3: POWER-HOUR INSTITUTIONAL MTM BALANCING"
@@ -466,13 +540,13 @@ def execute_v62_master_computation(selected_index, chosen_chart_sym, sel_stk, se
         active_scenario = "SCENARIO 6: FAILED AUCTION / SQUEEZE DAY (V-SHAPE REVERSAL)"
         scenario_action = "🚨 ABSORPTION CONFIRMED: BOOK PE & ENTER ATM CE FOR MEAN REVERSION TO VWAP"
         scenario_color = "#06b6d4"
-    elif bullish_score >= 5 and above_vwap_count >= 10:
-        active_scenario = "SCENARIO 1: BULLISH TREND DAY (INITIATIVE BUYING DRIVE)"
-        scenario_action = "🚀 ONE-WAY BULL RUN: BUY PULLBACKS TO 50 EMA / VWAP | NO PUTS ALLOWED"
+    elif bullish_score >= 5 and above_vwap_count >= 10 and hmm_state_idx == 0:
+        active_scenario = "SCENARIO 1: BULLISH TREND DAY (HMM INITIATIVE CONFIRMED)"
+        scenario_action = f"🚀 HMM BULL REGIME ({int(hmm_conf*100)}%): BUY PULLBACKS TO 50 EMA / VWAP | NO PUTS ALLOWED"
         scenario_color = "#00e676"
-    elif bearish_score >= 5 and below_vwap_count >= 10:
-        active_scenario = "SCENARIO 1: BEARISH TREND DAY (INSTITUTIONAL LIQUIDATION)"
-        scenario_action = "🩸 MERCILESS DUMP: TRAIL WITH 50 EMA / VWAP | TARGET DAY S1/S2"
+    elif bearish_score >= 5 and below_vwap_count >= 10 and hmm_state_idx == 2:
+        active_scenario = "SCENARIO 1: BEARISH TREND DAY (HMM LIQUIDATION CONFIRMED)"
+        scenario_action = f"🩸 HMM BEAR REGIME ({int(hmm_conf*100)}%): MERCILESS DUMP | TRAIL WITH 50 EMA"
         scenario_color = "#ff0055"
     elif abs(net_war_pts) < 15 and 6 <= above_vwap_count <= 9:
         active_scenario = "SCENARIO 2: NORMAL DAY (BALANCED ROTATIONAL RANGE)"
@@ -497,14 +571,14 @@ def execute_v62_master_computation(selected_index, chosen_chart_sym, sel_stk, se
     elif iv_crush_alert:
         golden_verdict = "⚠️ HIGH IVP CONVEXITY CRUSH (SPREADS RECOMMENDED OVER NAKED BUY)"
         verdict_color = "#eab308"
-    elif quarantine_active:
-        golden_verdict = "🛑 ALGO QUARANTINE: LUNCH-TIME CHOP (NO FRESH POSITIONS)"
+    elif quarantine_active or hmm_state_idx == 1:
+        golden_verdict = f"🛑 HMM CHOP REGIME ({int(hmm_conf*100)}% CONFIDENCE): ZERO EDGE"
         verdict_color = "#f43f5e"
-    elif bullish_score >= 5:
-        golden_verdict = "🚀 HIGH CONFLUENCE INSTITUTIONAL LONG (BUY CE ONLY)"
+    elif bullish_score >= 5 and hmm_state_idx == 0:
+        golden_verdict = "🚀 HIGH CONFLUENCE LONG (BUY CE ONLY) [HMM BULL CONFIRMED]"
         verdict_color = "#00e676"
-    elif bearish_score >= 5:
-        golden_verdict = "🩸 HIGH CONFLUENCE INSTITUTIONAL SHORT (BUY PE ONLY)"
+    elif bearish_score >= 5 and hmm_state_idx == 2:
+        golden_verdict = "🩸 HIGH CONFLUENCE SHORT (BUY PE ONLY) [HMM BEAR CONFIRMED]"
         verdict_color = "#ff0055"
     else:
         golden_verdict = "⚖️ NO DIRECTIONAL EDGE (TUG-OF-WAR CHOP REGIME)"
@@ -584,6 +658,12 @@ def execute_v62_master_computation(selected_index, chosen_chart_sym, sel_stk, se
         "quarantine_active": quarantine_active,
         "power_hour_active": power_hour,
         "macro": macro_data,
+        "hmm": {
+            "state_idx": hmm_state_idx,
+            "regime": hmm_label,
+            "confidence": round(hmm_conf * 100, 1),
+            "probabilities": hmm_all_probs
+        },
         "spot": {"cmp": spot_cmp, "prev": spot_prev_close, "change": spot_chg, "pct": spot_pct},
         "available_strikes": available_strikes,
         "cur_atm": cur_atm,
@@ -651,7 +731,7 @@ async def websocket_orderflow(websocket: WebSocket):
         print("🔴 WebSocket Session Ended:", e)
 
 # ==============================================================================
-# 4. INSTITUTIONAL ITM STRIKE & FIBONACCI TARGET ENGINE
+# 5. INSTITUTIONAL ITM STRIKE & FIBONACCI TARGET ENGINE
 # ==============================================================================
 STOCK_STEP_SIZES: Dict[str, float] = {
     "RELIANCE": 20.0, "HDFCBANK": 10.0, "ICICIBANK": 10.0, "INFY": 20.0,
@@ -707,7 +787,7 @@ def fetch_fibonacci_targets(entry: float, sl: float, direction: str = "LONG") ->
     }
 
 # ==============================================================================
-# 5. LIVE 180 F&O STOCKS MOMENTUM BREAKOUT SCANNER (TOP 20 ENGINE)
+# 6. LIVE 180 F&O STOCKS MOMENTUM BREAKOUT SCANNER (TOP 20 ENGINE)
 # ==============================================================================
 FNO_TOP_UNIVERSE = [
     {"symbol": "RELIANCE", "sec_id": 2885, "step": 20.0},
@@ -793,7 +873,7 @@ def fetch_live_fno_breakouts():
     return results[:20]
 
 # ==============================================================================
-# 6. DHAN 1-CLICK ORDER EXECUTION WITH IOC & 3-SEC AUTO-CANCEL FALLBACK
+# 7. DHAN 1-CLICK ORDER EXECUTION WITH IOC & 3-SEC AUTO-CANCEL FALLBACK
 # ==============================================================================
 class OrderRequest(BaseModel):
     symbol: str
@@ -805,7 +885,7 @@ class OrderRequest(BaseModel):
     sl_price: float
     lots: int = 1
     is_paper: bool = True
-    time_in_force: Optional[str] = "IOC"  # Missing Piece 4: Immediate-or-Cancel
+    time_in_force: Optional[str] = "IOC"
 
 @app.post("/api/trade/execute-order")
 def execute_trade_order(req: OrderRequest):
@@ -847,7 +927,6 @@ def execute_trade_order(req: OrderRequest):
             "Content-Type": "application/json"
         }
         
-        # Dhan Order with IOC / Limit-with-Protection
         dhan_payload = {
             "dhanClientId": CLIENT_ID.strip(),
             "transactionType": "BUY",
@@ -866,7 +945,6 @@ def execute_trade_order(req: OrderRequest):
                 res_data = resp.json()
                 order_id = res_data.get("orderId", "DHAN_REAL_OK")
                 
-                # Missing Piece 4: 3-Second Fill Check & Auto-Cancel Fallback
                 try:
                     fill_status = "PENDING"
                     for _ in range(3):
@@ -879,7 +957,6 @@ def execute_trade_order(req: OrderRequest):
                                 break
                     
                     if fill_status != "FILLED" and req.time_in_force != "IOC":
-                        # Auto cancel hanging order to protect from reversal trap
                         requests.delete(f"https://api.dhan.co/v2/orders/{order_id}", headers=headers, timeout=1.5)
                         return {
                             "status": "CANCELLED",
@@ -910,7 +987,7 @@ def execute_trade_order(req: OrderRequest):
             }
 
 # ==============================================================================
-# 7. EMERGENCY MANUAL SQUARE OFF ALL POSITIONS ENGINE
+# 8. EMERGENCY MANUAL SQUARE OFF ALL POSITIONS ENGINE
 # ==============================================================================
 @app.post("/api/trade/square-off-all")
 def square_off_all_positions(payload: Dict[str, Any]):
