@@ -3,9 +3,6 @@
 import { useEffect, useState, useRef, useMemo } from "react";
 import TradingViewChart from "@/components/TradingViewChart";
 
-// ==============================================================================
-// 1. EMBEDDED INLINE INSTITUTIONAL F&O BREAKOUT SCREENER (TOP 20 STOCKS)
-// ==============================================================================
 interface ScoredStock {
   symbol: string;
   cmp: number;
@@ -135,9 +132,6 @@ function StockScreener({ onSelectStock }: StockScreenerProps) {
   );
 }
 
-// ==============================================================================
-// 2. EMBEDDED DYNAMIC FIBONACCI TARGET ENGINE WITH SLIPPAGE PROTECTION
-// ==============================================================================
 interface FibTargets {
   T1_382: number;
   T2_618: number;
@@ -202,16 +196,16 @@ function LiveFibonacciEngine({ activeData }: { activeData: { symbol: string; tri
     }
   }, [activeData]);
 
-  // Order with Slippage Protection (Limit at LTP + 0.5% cap)
   const handlePlaceOrder = async (tradeType: "CE" | "PE") => {
-    setOrderStatusMsg("Transmitting trade with slippage armor...");
+    setOrderStatusMsg("Transmitting trade with IOC slippage shield...");
     try {
       const payload = {
         symbol,
         strike,
         type: tradeType,
         entry_price: entryPrice,
-        limit_cap: Number((entryPrice * 1.005).toFixed(2)), // 0.5% Slippage Protection Cap
+        limit_cap: Number((entryPrice * 1.005).toFixed(2)),
+        time_in_force: "IOC",
         target_price: targets ? targets.T1_382 : entryPrice * 1.02,
         sl_price: slPrice,
         lots: lotCount,
@@ -228,7 +222,7 @@ function LiveFibonacciEngine({ activeData }: { activeData: { symbol: string; tri
         const resData = await res.json();
         setOrderStatusMsg(resData.msg || "Order Placed Successfully!");
       } else {
-        setOrderStatusMsg(isPaperTrade ? `🟢 [PAPER FILLED] ${symbol} ${strike} at ₹${entryPrice} (Limit Cap: ₹${(entryPrice * 1.005).toFixed(1)})` : "❌ Dhan Order Failed");
+        setOrderStatusMsg(isPaperTrade ? `🟢 [PAPER FILLED] ${symbol} ${strike} at ₹${entryPrice} (IOC Active)` : "❌ Dhan Order Failed");
       }
     } catch (e) {
       setOrderStatusMsg(isPaperTrade ? `🟢 [PAPER SIMULATION FILLED] ${symbol} ${strike} at ₹${entryPrice}` : "❌ Connection Timeout!");
@@ -260,7 +254,7 @@ function LiveFibonacciEngine({ activeData }: { activeData: { symbol: string; tri
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <span style={{ fontWeight: "bold", color: "#38bdf8", fontSize: "14px" }}>📐 FIBONACCI INSTITUTIONAL TARGET ENGINE</span>
           <span style={{ fontSize: "11px", background: "#0284c7", padding: "2px 8px", borderRadius: "4px" }}>DELTA 0.55-0.60 ITM</span>
-          <span style={{ fontSize: "10px", background: "#064e3b", color: "#34d399", padding: "2px 6px", borderRadius: "3px", fontWeight: "bold" }}>🛡️ SLIPPAGE ARMOR (0.5% CAP)</span>
+          <span style={{ fontSize: "10px", background: "#064e3b", color: "#34d399", padding: "2px 6px", borderRadius: "3px", fontWeight: "bold" }}>🛡️ IOC / 3S FALLBACK SHIELD</span>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -464,9 +458,6 @@ function LiveFibonacciEngine({ activeData }: { activeData: { symbol: string; tri
   );
 }
 
-// ==============================================================================
-// 3. MASTER CONSTITUENTS DATABASE: NIFTY (LOT 65), BANK NIFTY (LOT 30), SENSEX (LOT 20)
-// ==============================================================================
 const MASTER_INDICES: Record<string, any> = {
   "NIFTY 50": {
     sec_id: 13, step: 50, lot_size: 65, fallback_cmp: 22600.00, fallback_prev: 22687.65, top_limit: 15,
@@ -587,18 +578,19 @@ export default function TerminalDashboard() {
   const [refreshRate, setRefreshRate] = useState(2);
   const [currentTab, setCurrentTab] = useState<"tab1" | "tab2" | "tab3" | "both">("tab1");
 
-  // Missing Piece 1: India VIX & IV Crush Regime State
   const [indiaVix, setIndiaVix] = useState<number>(13.45);
-
-  // Missing Piece 2: Time-of-Day Algo Quarantine State
   const [isQuarantineTime, setIsQuarantineTime] = useState<boolean>(false);
+  const [isPowerHour, setIsPowerHour] = useState<boolean>(false);
+  const [macroData, setMacroData] = useState<any>({
+    dxy: { val: 103.85, chg: -0.15, status: "🟢 FAVORABLE (INR SUPPORT)" },
+    brent_crude: { val: 74.20, chg: -0.85, status: "🟢 COOLING (AUTO/PAINTS BIAS)" },
+    us10y: { val: 4.18, chg: +0.02, status: "⚖️ STABLE" }
+  });
 
-  // Tab 1 Execution & Square-Off State
   const [tab1PaperMode, setTab1PaperMode] = useState<boolean>(true);
   const [tab1Lots, setTab1Lots] = useState<number>(1);
   const [tab1OrderMsg, setTab1OrderMsg] = useState<string | null>(null);
 
-  // Tab 3 Link State
   const [fibAutoData, setFibAutoData] = useState<{ symbol: string; trigger: number; sl: number; type: "CE" | "PE"; suggestedStrike: string } | null>(null);
 
   const activeIndexConfig = MASTER_INDICES[selectedIndex] || MASTER_INDICES["NIFTY 50"];
@@ -608,19 +600,12 @@ export default function TerminalDashboard() {
   const [data, setData] = useState<any>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
-  // Timer check for 11:30 AM to 01:15 PM Quarantine Window
   useEffect(() => {
     const checkTime = () => {
       const now = new Date();
-      const hrs = now.getHours();
-      const mins = now.getMinutes();
-      const totalMins = hrs * 60 + mins;
-      // 11:30 AM = 690 mins, 01:15 PM = 795 mins
-      if (totalMins >= 690 && totalMins <= 795) {
-        setIsQuarantineTime(true);
-      } else {
-        setIsQuarantineTime(false);
-      }
+      const totalMins = now.getHours() * 60 + now.getMinutes();
+      setIsQuarantineTime(totalMins >= 690 && totalMins <= 795);
+      setIsPowerHour(totalMins >= 885 && totalMins <= 930);
     };
     checkTime();
     const interval = setInterval(checkTime, 30000);
@@ -644,6 +629,7 @@ export default function TerminalDashboard() {
         if (payload.index === selectedIndex) {
           setData(payload);
           if (payload.vix) setIndiaVix(payload.vix);
+          if (payload.macro) setMacroData(payload.macro);
         }
       } catch (e) {}
     };
@@ -669,10 +655,10 @@ export default function TerminalDashboard() {
   const spotChg = Number((spotCmp - spotPrev).toFixed(2));
   const spotPct = Number(((spotChg / spotPrev) * 100).toFixed(2));
 
-  // Missing Piece 4: Prior Day Value Area Anchor Targets (Yesterday's Levels)
   const yPOC = Number((spotPrev - 12.0).toFixed(2));
   const yVAH = Number((spotPrev + 28.0).toFixed(2));
   const yVAL = Number((spotPrev - 45.0).toFixed(2));
+  const pmPOC = data?.auction?.pm_anchor?.pm_poc || Number((spotCmp - 4.0).toFixed(2));
 
   const step = activeIndexConfig.step;
   const curAtm = Math.round(spotCmp / step) * step;
@@ -722,11 +708,10 @@ export default function TerminalDashboard() {
 
   const activeStockInfo = allStocks.find((s: any) => s.sym === selectedStock) || allStocks[0];
 
-  // Missing Piece 3: Tab 1 Order Placement with 0.5% Slippage Armor
   const handleTab1Execute = async (buySide: "CE" | "PE") => {
     const ltpEstimate = selectedIndex === "BANK NIFTY" ? 167.95 : 23.89;
     const limitCap = Number((ltpEstimate * 1.005).toFixed(2));
-    setTab1OrderMsg(`Transmitting ${selectedIndex} ${selStrike} ${buySide} with Slippage Cap ₹${limitCap}...`);
+    setTab1OrderMsg(`Transmitting ${selectedIndex} ${selStrike} ${buySide} [IOC / Shield Cap: ₹${limitCap}]...`);
     try {
       const payload = {
         symbol: selectedIndex,
@@ -734,6 +719,7 @@ export default function TerminalDashboard() {
         type: buySide,
         entry_price: ltpEstimate,
         limit_cap: limitCap,
+        time_in_force: "IOC",
         target_price: Number((ltpEstimate * 1.382).toFixed(2)),
         sl_price: Number((ltpEstimate * 0.85).toFixed(2)),
         lots: tab1Lots,
@@ -750,7 +736,7 @@ export default function TerminalDashboard() {
         const resData = await res.json();
         setTab1OrderMsg(resData.msg || "Order Placed Successfully!");
       } else {
-        setTab1OrderMsg(tab1PaperMode ? `🟢 [PAPER FILLED] ${selectedIndex} ${selStrike} ${buySide} (${tab1Lots * activeIndexConfig.lot_size} Qty) [Slippage Shield Active]` : "❌ Dhan Gateway Failed!");
+        setTab1OrderMsg(tab1PaperMode ? `🟢 [PAPER FILLED] ${selectedIndex} ${selStrike} ${buySide} (${tab1Lots * activeIndexConfig.lot_size} Qty) [IOC Shield Active]` : "❌ Dhan Gateway Failed!");
       }
     } catch (e) {
       setTab1OrderMsg(tab1PaperMode ? `🟢 [PAPER FILLED] ${selectedIndex} ${selStrike} ${buySide} (${tab1Lots * activeIndexConfig.lot_size} Qty)` : "❌ Connection Timeout!");
@@ -784,7 +770,7 @@ export default function TerminalDashboard() {
           <h2 className="text-sm font-black text-white flex items-center gap-1.5">
             ⚡ <span className="text-[#38bdf8]">DHAN GATEWAY</span>
           </h2>
-          <div className="text-[10px] text-cyan-400 font-bold tracking-wider">V62 SCENARIO MASTER</div>
+          <div className="text-[10px] text-cyan-400 font-bold tracking-wider">V63 IRON FORTRESS</div>
         </div>
 
         <div className="h-[1px] bg-slate-800" />
@@ -862,7 +848,31 @@ export default function TerminalDashboard() {
 
         <div className="h-[1px] bg-slate-800" />
 
-        {/* 2. DYNAMIC LIVE CHART STOCK SELECTOR - SHOWS ALL 50 / 12 / 30 STOCKS */}
+        <div className="space-y-2">
+          <div className="text-[11px] font-black text-amber-400 flex items-center gap-1">
+            🌐 <span>MACRO CROSS-MARKET ENGINE</span>
+          </div>
+          <div className="rounded border border-slate-800 bg-[#090f1d] p-2 text-[10px] space-y-1">
+            <div className="flex justify-between">
+              <span className="text-slate-400">DXY Index:</span>
+              <span className="font-bold text-white">{macroData.dxy.val} ({macroData.dxy.chg})</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Brent Crude:</span>
+              <span className="font-bold text-white">${macroData.brent_crude.val}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">US 10Y Yield:</span>
+              <span className="font-bold text-white">{macroData.us10y.val}%</span>
+            </div>
+            <div className="text-[9px] text-emerald-400 font-bold pt-1 border-t border-slate-800">
+              {macroData.dxy.status}
+            </div>
+          </div>
+        </div>
+
+        <div className="h-[1px] bg-slate-800" />
+
         <div className="space-y-3">
           <div className="text-[11px] font-black text-white flex items-center gap-1">
             📈 <span className="text-[#38bdf8]">LIVE CHART SELECTOR</span>
@@ -905,14 +915,12 @@ export default function TerminalDashboard() {
 
       {/* ----------------- 3. MAIN COCKPIT WORKSPACE ----------------- */}
       <main className="flex-1 p-3 overflow-y-auto space-y-2">
-        {/* TOP NEON EXHAUSTION BAR + INDIA VIX & ALGO QUARANTINE ARMOR */}
         <div className="flex items-center justify-between rounded-lg border-2 border-cyan-500 bg-gradient-to-r from-cyan-950/40 via-[#070e1e] to-rose-950/40 px-4 py-2 shadow-[0_0_15px_rgba(6,182,212,0.4)]">
           <div className="flex items-center gap-2">
             <span className="text-sm font-black text-[#38bdf8] tracking-wide">
               🚨 EXHAUSTION REVERSAL (ABSORPTION DIVERGENCE ACTIVE)
             </span>
 
-            {/* Missing Piece 1: India VIX IV-Crush Regime Indicator */}
             <span className={`px-2 py-0.5 rounded text-[10px] font-black border ${
               indiaVix > 15 ? "bg-amber-950 border-amber-500 text-amber-300" :
               indiaVix < 12 ? "bg-rose-950 border-rose-500 text-rose-300" :
@@ -921,7 +929,12 @@ export default function TerminalDashboard() {
               📊 INDIA VIX: {indiaVix.toFixed(2)} ({indiaVix < 12 ? "⚠️ THETA CRUSH" : "NORMAL IV"})
             </span>
 
-            {/* Missing Piece 2: 11:30 AM - 01:15 PM Algo Quarantine Window */}
+            {isPowerHour && (
+              <span className="px-2 py-0.5 rounded text-[10px] font-black bg-pink-700 text-white animate-pulse border border-pink-400">
+                ⚡ 02:45 PM POWER-HOUR ACTIVE (PM-POC SQUEEZE)
+              </span>
+            )}
+
             {isQuarantineTime && (
               <span className="px-2 py-0.5 rounded text-[10px] font-black bg-rose-600 text-white animate-pulse border border-rose-400">
                 🛑 LUNCH-TIME CHOP LOCKDOWN (NO FRESH TRADES)
@@ -939,7 +952,6 @@ export default function TerminalDashboard() {
           </div>
         </div>
 
-        {/* SCENARIO CLASSIFIER BANNER */}
         <div className="flex items-center justify-between rounded-lg border border-cyan-500 bg-[#08142c] px-4 py-2 shadow-[0_0_14px_rgba(6,182,212,0.3)]">
           <div>
             <span className="text-[10px] text-slate-400 font-bold">ACTIVE MARKET REGIME:</span>
@@ -955,7 +967,6 @@ export default function TerminalDashboard() {
           </div>
         </div>
 
-        {/* 5-CARD AUCTION ANCHORS + MISSING PIECE 4: PRIOR DAY POC & VALUE AREA */}
         <div className="grid grid-cols-6 gap-2">
           <div className="rounded-md border border-slate-800 bg-[#0b1730] p-1.5 text-center">
             <div className="text-[9px] text-slate-400 font-bold">1. C1 HIGH (09:18)</div>
@@ -977,15 +988,13 @@ export default function TerminalDashboard() {
             <div className="text-[9px] text-slate-400 font-bold">5. C1 LOW (09:18)</div>
             <div className="text-sm font-black text-rose-500">₹{(spotCmp - 22.0).toFixed(2)}</div>
           </div>
-          {/* Missing Piece 4: Prior Day POC Cluster */}
           <div className="rounded-md border border-purple-800 bg-[#160d2e] p-1.5 text-center">
-            <div className="text-[9px] text-purple-300 font-bold">6. YESTERDAY POC</div>
-            <div className="text-sm font-black text-purple-400">₹{yPOC}</div>
+            <div className="text-[9px] text-purple-300 font-bold">{isPowerHour ? "⚡ PM-POC (02:45)" : "6. YESTERDAY POC"}</div>
+            <div className="text-sm font-black text-purple-400">₹{isPowerHour ? pmPOC : yPOC}</div>
             <div className="text-[8px] text-slate-400">yVAH: ₹{yVAH} | yVAL: ₹{yVAL}</div>
           </div>
         </div>
 
-        {/* 6-POINT GOLDEN RULE CONFLUENCE HUD */}
         <div className="rounded-lg border-2 border-[#38bdf8] bg-[#081226] p-2.5 shadow-[0_0_16px_rgba(56,189,248,0.25)]">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-black text-[#38bdf8]">
@@ -1023,7 +1032,6 @@ export default function TerminalDashboard() {
           </div>
         </div>
 
-        {/* ----------------- 3-TAB NAVIGATION BAR ----------------- */}
         <div className="flex gap-2">
           <button
             onClick={() => setCurrentTab("tab1")}
@@ -1063,7 +1071,7 @@ export default function TerminalDashboard() {
           </button>
         </div>
 
-        {/* ----------------- TAB 1: EXECUTIVE DESK (FORTRESS INTEGRATED) ----------------- */}
+        {/* ----------------- TAB 1: EXECUTIVE DESK ----------------- */}
         {(currentTab === "tab1" || currentTab === "both") && (
           <div className="space-y-2">
             <div className="grid grid-cols-4 gap-2">
@@ -1119,7 +1127,6 @@ export default function TerminalDashboard() {
                 </div>
               </div>
 
-              {/* TAB 1 EXECUTION DASHBOARD CARD */}
               <div className="col-span-6 rounded-lg border border-slate-800 bg-[#070e1e] p-2.5 flex flex-col justify-between">
                 <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-1.5">
                   <span className="text-xs font-black text-[#38bdf8]">
@@ -1199,11 +1206,10 @@ export default function TerminalDashboard() {
                   </div>
                   <div className="text-[9px] text-cyan-300 flex justify-between">
                     <span>Lot: {activeIndexConfig.lot_size} | Total Qty: {activeIndexConfig.lot_size * tab1Lots}</span>
-                    <span className="text-emerald-400 font-bold">🛡️ Slippage Cap: ₹{((selectedIndex === "BANK NIFTY" ? 167.95 : 23.89) * 1.005).toFixed(1)}</span>
+                    <span className="text-emerald-400 font-bold">🛡️ IOC Shield Cap: ₹{((selectedIndex === "BANK NIFTY" ? 167.95 : 23.89) * 1.005).toFixed(1)}</span>
                   </div>
                 </div>
 
-                {/* 1-Click Execution Buttons */}
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => handleTab1Execute("PE")}
@@ -1219,7 +1225,6 @@ export default function TerminalDashboard() {
                   </button>
                 </div>
 
-                {/* Order Feedback Status Alert */}
                 {tab1OrderMsg && (
                   <div className="mt-1.5 rounded border border-emerald-500 bg-emerald-950/80 px-2 py-1 text-[10px] font-bold text-emerald-300 flex justify-between items-center">
                     <span>{tab1OrderMsg}</span>
@@ -1229,7 +1234,6 @@ export default function TerminalDashboard() {
               </div>
             </div>
 
-            {/* LOWER COCKPIT: DYNAMIC SELECTED STOCK CHART & 4-TIER HUD */}
             <div className="grid grid-cols-12 gap-2">
               <div className="col-span-8 space-y-2">
                 <div className="rounded-lg border border-slate-800 bg-[#060c1a] p-2.5 shadow-md">
@@ -1241,7 +1245,6 @@ export default function TerminalDashboard() {
                   <TradingViewChart />
                 </div>
 
-                {/* 4-TIER ORDER FLOW MATRIX HUD */}
                 <div className="overflow-hidden rounded-lg border-2 border-sky-600 bg-[#060c1a] shadow-[0_0_15px_rgba(2,132,199,0.3)]">
                   <div className="bg-[#0c1833] border-b border-sky-600 px-3 py-1.5 text-xs font-black text-[#38bdf8] flex justify-between">
                     <span>⚡ 4-TIER ORDER FLOW MATRIX HUD (DIRECT TICK FEED)</span>
@@ -1284,7 +1287,9 @@ export default function TerminalDashboard() {
                     <div className="font-bold text-rose-500">-3.90 Cr</div>
                   </div>
                   <div className="grid grid-cols-7 px-3 py-2 text-xs border-b border-slate-900 bg-[#0a1c38] border-l-4 border-cyan-400 items-center">
-                    <div className="font-black text-cyan-400">4. {selStrike} {selOptionType} (ACTIVE)</div>
+                    <div className="font-black text-cyan-400">
+                      4. {selStrike} {selOptionType} <span className="text-[9px] text-amber-300 font-normal">(IV: 14.8 | IVP: 62%)</span>
+                    </div>
                     <div>4.26 L</div>
                     <div className="text-[#00e676]">2.34 L</div>
                     <div className="text-rose-500">1.92 L</div>
@@ -1295,7 +1300,6 @@ export default function TerminalDashboard() {
                 </div>
               </div>
 
-              {/* RHS Heavyweights Table */}
               <div className="col-span-4 rounded-lg border border-slate-800 bg-[#060c1a] p-2.5 shadow-md flex flex-col justify-between">
                 <div>
                   <div className="text-xs font-black text-[#38bdf8] border-b border-slate-800 pb-1.5 mb-1.5">
