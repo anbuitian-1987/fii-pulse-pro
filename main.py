@@ -726,3 +726,92 @@ def fetch_live_fno_breakouts():
     # Sort descending by absolute momentum and return elite Top 20
     results.sort(key=lambda x: abs(x["gapPct"]), reverse=True)
     return results[:20]
+# ==============================================================================
+# 6. DHAN 1-CLICK ORDER EXECUTION & PAPER TRADE ENGINE
+# ==============================================================================
+from pydantic import BaseModel
+
+class OrderRequest(BaseModel):
+    symbol: str
+    strike: str
+    type: str  # CE or PE
+    entry_price: float
+    target_price: float
+    sl_price: float
+    lots: int = 1
+    is_paper: bool = True
+
+@app.post("/api/trade/execute-order")
+def execute_trade_order(req: OrderRequest):
+    """
+    Handles both Paper Trading simulation and Real Dhan API Live execution.
+    """
+    timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+    
+    if req.is_paper:
+        # Paper Trade Virtual Fill
+        return {
+            "status": "SUCCESS",
+            "mode": "PAPER_TRADE",
+            "order_id": f"PAPER_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}",
+            "symbol": req.symbol,
+            "strike": req.strike,
+            "type": req.type,
+            "entry_price": req.entry_price,
+            "sl_price": req.sl_price,
+            "target_t1": req.target_price,
+            "lots": req.lots,
+            "time": timestamp,
+            "msg": f"🟢 [PAPER TRADE EXECUTED] {req.symbol} {req.strike} bought at ₹{req.entry_price} (SL: ₹{req.sl_price})"
+        }
+    else:
+        # Real Money Execution via Dhan API
+        if not CLIENT_ID or not ACCESS_TOKEN or "UNGALODA" in CLIENT_ID:
+            return {
+                "status": "FAILED",
+                "mode": "REAL_MONEY",
+                "msg": "❌ Dhan Client ID or Access Token is missing/invalid!"
+            }
+        
+        headers = {
+            "access-token": ACCESS_TOKEN.strip(),
+            "client-id": CLIENT_ID.strip(),
+            "Content-Type": "application/json"
+        }
+        
+        # Dhan official order payload template
+        dhan_payload = {
+            "dhanClientId": CLIENT_ID.strip(),
+            "transactionType": "BUY",
+            "exchangeSegment": "NSE_FNO",
+            "productType": "INTRADAY",
+            "orderType": "MARKET",
+            "validity": "DAY",
+            "tradingSymbol": f"{req.symbol} {req.strike}",
+            "quantity": req.lots * 25, # default lot size
+            "price": 0.0
+        }
+        
+        try:
+            resp = requests.post("https://api.dhan.co/v2/orders", headers=headers, json=dhan_payload, timeout=3.0)
+            if resp.status_code in [200, 201]:
+                res_data = resp.json()
+                return {
+                    "status": "SUCCESS",
+                    "mode": "REAL_MONEY",
+                    "order_id": res_data.get("orderId", "DHAN_REAL_OK"),
+                    "time": timestamp,
+                    "msg": f"🚨 [REAL ORDER PLACED] {req.symbol} {req.strike} sent to Dhan Exchange!"
+                }
+            else:
+                return {
+                    "status": "FAILED",
+                    "mode": "REAL_MONEY",
+                    "msg": f"Dhan API Error: {resp.text}"
+                }
+        except Exception as e:
+            return {
+                "status": "ERROR",
+                "mode": "REAL_MONEY",
+                "msg": f"Execution Connection Timeout: {str(e)}"
+            }
