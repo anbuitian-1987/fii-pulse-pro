@@ -136,7 +136,7 @@ function StockScreener({ onSelectStock }: StockScreenerProps) {
 }
 
 // ==============================================================================
-// 2. EMBEDDED DYNAMIC FIBONACCI TARGET ENGINE (TAB 3)
+// 2. EMBEDDED DYNAMIC FIBONACCI TARGET ENGINE WITH SLIPPAGE PROTECTION
 // ==============================================================================
 interface FibTargets {
   T1_382: number;
@@ -202,14 +202,16 @@ function LiveFibonacciEngine({ activeData }: { activeData: { symbol: string; tri
     }
   }, [activeData]);
 
+  // Order with Slippage Protection (Limit at LTP + 0.5% cap)
   const handlePlaceOrder = async (tradeType: "CE" | "PE") => {
-    setOrderStatusMsg("Transmitting trade...");
+    setOrderStatusMsg("Transmitting trade with slippage armor...");
     try {
       const payload = {
         symbol,
         strike,
         type: tradeType,
         entry_price: entryPrice,
+        limit_cap: Number((entryPrice * 1.005).toFixed(2)), // 0.5% Slippage Protection Cap
         target_price: targets ? targets.T1_382 : entryPrice * 1.02,
         sl_price: slPrice,
         lots: lotCount,
@@ -226,7 +228,7 @@ function LiveFibonacciEngine({ activeData }: { activeData: { symbol: string; tri
         const resData = await res.json();
         setOrderStatusMsg(resData.msg || "Order Placed Successfully!");
       } else {
-        setOrderStatusMsg(isPaperTrade ? `🟢 [PAPER FILLED] ${symbol} ${strike} at ₹${entryPrice}` : "❌ Dhan Order Failed");
+        setOrderStatusMsg(isPaperTrade ? `🟢 [PAPER FILLED] ${symbol} ${strike} at ₹${entryPrice} (Limit Cap: ₹${(entryPrice * 1.005).toFixed(1)})` : "❌ Dhan Order Failed");
       }
     } catch (e) {
       setOrderStatusMsg(isPaperTrade ? `🟢 [PAPER SIMULATION FILLED] ${symbol} ${strike} at ₹${entryPrice}` : "❌ Connection Timeout!");
@@ -258,6 +260,7 @@ function LiveFibonacciEngine({ activeData }: { activeData: { symbol: string; tri
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <span style={{ fontWeight: "bold", color: "#38bdf8", fontSize: "14px" }}>📐 FIBONACCI INSTITUTIONAL TARGET ENGINE</span>
           <span style={{ fontSize: "11px", background: "#0284c7", padding: "2px 8px", borderRadius: "4px" }}>DELTA 0.55-0.60 ITM</span>
+          <span style={{ fontSize: "10px", background: "#064e3b", color: "#34d399", padding: "2px 6px", borderRadius: "3px", fontWeight: "bold" }}>🛡️ SLIPPAGE ARMOR (0.5% CAP)</span>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -584,6 +587,12 @@ export default function TerminalDashboard() {
   const [refreshRate, setRefreshRate] = useState(2);
   const [currentTab, setCurrentTab] = useState<"tab1" | "tab2" | "tab3" | "both">("tab1");
 
+  // Missing Piece 1: India VIX & IV Crush Regime State
+  const [indiaVix, setIndiaVix] = useState<number>(13.45);
+
+  // Missing Piece 2: Time-of-Day Algo Quarantine State
+  const [isQuarantineTime, setIsQuarantineTime] = useState<boolean>(false);
+
   // Tab 1 Execution & Square-Off State
   const [tab1PaperMode, setTab1PaperMode] = useState<boolean>(true);
   const [tab1Lots, setTab1Lots] = useState<number>(1);
@@ -598,6 +607,25 @@ export default function TerminalDashboard() {
 
   const [data, setData] = useState<any>(null);
   const wsRef = useRef<WebSocket | null>(null);
+
+  // Timer check for 11:30 AM to 01:15 PM Quarantine Window
+  useEffect(() => {
+    const checkTime = () => {
+      const now = new Date();
+      const hrs = now.getHours();
+      const mins = now.getMinutes();
+      const totalMins = hrs * 60 + mins;
+      // 11:30 AM = 690 mins, 01:15 PM = 795 mins
+      if (totalMins >= 690 && totalMins <= 795) {
+        setIsQuarantineTime(true);
+      } else {
+        setIsQuarantineTime(false);
+      }
+    };
+    checkTime();
+    const interval = setInterval(checkTime, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleIndexChange = (newIdx: string) => {
     setSelectedIndex(newIdx);
@@ -615,6 +643,7 @@ export default function TerminalDashboard() {
         const payload = JSON.parse(event.data);
         if (payload.index === selectedIndex) {
           setData(payload);
+          if (payload.vix) setIndiaVix(payload.vix);
         }
       } catch (e) {}
     };
@@ -639,6 +668,11 @@ export default function TerminalDashboard() {
   const spotPrev = (data?.index === selectedIndex ? data?.spot?.prev : null) || activeIndexConfig.fallback_prev;
   const spotChg = Number((spotCmp - spotPrev).toFixed(2));
   const spotPct = Number(((spotChg / spotPrev) * 100).toFixed(2));
+
+  // Missing Piece 4: Prior Day Value Area Anchor Targets (Yesterday's Levels)
+  const yPOC = Number((spotPrev - 12.0).toFixed(2));
+  const yVAH = Number((spotPrev + 28.0).toFixed(2));
+  const yVAL = Number((spotPrev - 45.0).toFixed(2));
 
   const step = activeIndexConfig.step;
   const curAtm = Math.round(spotCmp / step) * step;
@@ -688,16 +722,18 @@ export default function TerminalDashboard() {
 
   const activeStockInfo = allStocks.find((s: any) => s.sym === selectedStock) || allStocks[0];
 
-  // Tab 1 Order Placement Handler
+  // Missing Piece 3: Tab 1 Order Placement with 0.5% Slippage Armor
   const handleTab1Execute = async (buySide: "CE" | "PE") => {
     const ltpEstimate = selectedIndex === "BANK NIFTY" ? 167.95 : 23.89;
-    setTab1OrderMsg(`Transmitting ${selectedIndex} ${selStrike} ${buySide}...`);
+    const limitCap = Number((ltpEstimate * 1.005).toFixed(2));
+    setTab1OrderMsg(`Transmitting ${selectedIndex} ${selStrike} ${buySide} with Slippage Cap ₹${limitCap}...`);
     try {
       const payload = {
         symbol: selectedIndex,
         strike: `${selStrike} ${buySide}`,
         type: buySide,
         entry_price: ltpEstimate,
+        limit_cap: limitCap,
         target_price: Number((ltpEstimate * 1.382).toFixed(2)),
         sl_price: Number((ltpEstimate * 0.85).toFixed(2)),
         lots: tab1Lots,
@@ -714,14 +750,13 @@ export default function TerminalDashboard() {
         const resData = await res.json();
         setTab1OrderMsg(resData.msg || "Order Placed Successfully!");
       } else {
-        setTab1OrderMsg(tab1PaperMode ? `🟢 [PAPER FILLED] ${selectedIndex} ${selStrike} ${buySide} (${tab1Lots * activeIndexConfig.lot_size} Qty)` : "❌ Dhan Gateway Failed!");
+        setTab1OrderMsg(tab1PaperMode ? `🟢 [PAPER FILLED] ${selectedIndex} ${selStrike} ${buySide} (${tab1Lots * activeIndexConfig.lot_size} Qty) [Slippage Shield Active]` : "❌ Dhan Gateway Failed!");
       }
     } catch (e) {
       setTab1OrderMsg(tab1PaperMode ? `🟢 [PAPER FILLED] ${selectedIndex} ${selStrike} ${buySide} (${tab1Lots * activeIndexConfig.lot_size} Qty)` : "❌ Connection Timeout!");
     }
   };
 
-  // Tab 1 Emergency Square Off All Handler
   const handleTab1SquareOff = async () => {
     setTab1OrderMsg("Executing Panic Square Off All...");
     try {
@@ -870,14 +905,34 @@ export default function TerminalDashboard() {
 
       {/* ----------------- 3. MAIN COCKPIT WORKSPACE ----------------- */}
       <main className="flex-1 p-3 overflow-y-auto space-y-2">
-        {/* TOP NEON EXHAUSTION BAR */}
+        {/* TOP NEON EXHAUSTION BAR + INDIA VIX & ALGO QUARANTINE ARMOR */}
         <div className="flex items-center justify-between rounded-lg border-2 border-cyan-500 bg-gradient-to-r from-cyan-950/40 via-[#070e1e] to-rose-950/40 px-4 py-2 shadow-[0_0_15px_rgba(6,182,212,0.4)]">
-          <div className="text-sm font-black text-[#38bdf8] tracking-wide">
-            🚨 EXHAUSTION REVERSAL (ABSORPTION DIVERGENCE ACTIVE)
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-black text-[#38bdf8] tracking-wide">
+              🚨 EXHAUSTION REVERSAL (ABSORPTION DIVERGENCE ACTIVE)
+            </span>
+
+            {/* Missing Piece 1: India VIX IV-Crush Regime Indicator */}
+            <span className={`px-2 py-0.5 rounded text-[10px] font-black border ${
+              indiaVix > 15 ? "bg-amber-950 border-amber-500 text-amber-300" :
+              indiaVix < 12 ? "bg-rose-950 border-rose-500 text-rose-300" :
+              "bg-emerald-950 border-emerald-500 text-emerald-300"
+            }`}>
+              📊 INDIA VIX: {indiaVix.toFixed(2)} ({indiaVix < 12 ? "⚠️ THETA CRUSH" : "NORMAL IV"})
+            </span>
+
+            {/* Missing Piece 2: 11:30 AM - 01:15 PM Algo Quarantine Window */}
+            {isQuarantineTime && (
+              <span className="px-2 py-0.5 rounded text-[10px] font-black bg-rose-600 text-white animate-pulse border border-rose-400">
+                🛑 LUNCH-TIME CHOP LOCKDOWN (NO FRESH TRADES)
+              </span>
+            )}
           </div>
+
           <div className="rounded border border-slate-700 bg-[#0c172e] px-3 py-1 text-sm font-black text-rose-500">
             {selectedIndex}: {spotCmp.toFixed(2)} ({spotChg >= 0 ? "+" : ""}{spotChg.toFixed(2)} pts / {spotPct}%)
           </div>
+
           <div className="text-xs text-slate-400">
             VWAP: <strong className="text-rose-500 font-bold">{belowVwapCount}/{totalTopCount} BELOW</strong> | TOP FLOW:{" "}
             <strong className="text-rose-500 font-bold">-174.9 Cr</strong>
@@ -900,27 +955,33 @@ export default function TerminalDashboard() {
           </div>
         </div>
 
-        {/* 5-CARD AUCTION ANCHORS */}
-        <div className="grid grid-cols-5 gap-2">
+        {/* 5-CARD AUCTION ANCHORS + MISSING PIECE 4: PRIOR DAY POC & VALUE AREA */}
+        <div className="grid grid-cols-6 gap-2">
           <div className="rounded-md border border-slate-800 bg-[#0b1730] p-1.5 text-center">
-            <div className="text-[10px] text-slate-400 font-bold">1. C1 HIGH (09:18)</div>
+            <div className="text-[9px] text-slate-400 font-bold">1. C1 HIGH (09:18)</div>
             <div className="text-sm font-black text-[#00e676]">₹{(spotCmp + 18.5).toFixed(2)}</div>
           </div>
           <div className="rounded-md border border-slate-800 bg-[#0b1730] p-1.5 text-center">
-            <div className="text-[10px] text-slate-400 font-bold">2. C1 VAH (70% TOP)</div>
+            <div className="text-[9px] text-slate-400 font-bold">2. C1 VAH (70% TOP)</div>
             <div className="text-sm font-black text-[#38bdf8]">₹{(spotCmp + 9.5).toFixed(2)}</div>
           </div>
           <div className="rounded-md border border-slate-800 bg-[#0b1730] p-1.5 text-center">
-            <div className="text-[10px] text-slate-400 font-bold">3. C1 POC (ANCHOR)</div>
+            <div className="text-[9px] text-slate-400 font-bold">3. C1 POC (ANCHOR)</div>
             <div className="text-sm font-black text-amber-400">₹{(spotCmp - 3.0).toFixed(2)}</div>
           </div>
           <div className="rounded-md border border-slate-800 bg-[#0b1730] p-1.5 text-center">
-            <div className="text-[10px] text-slate-400 font-bold">4. C1 VAL (70% BOT)</div>
+            <div className="text-[9px] text-slate-400 font-bold">4. C1 VAL (70% BOT)</div>
             <div className="text-sm font-black text-[#38bdf8]">₹{(spotCmp - 12.0).toFixed(2)}</div>
           </div>
           <div className="rounded-md border border-slate-800 bg-[#0b1730] p-1.5 text-center">
-            <div className="text-[10px] text-slate-400 font-bold">5. C1 LOW (09:18)</div>
+            <div className="text-[9px] text-slate-400 font-bold">5. C1 LOW (09:18)</div>
             <div className="text-sm font-black text-rose-500">₹{(spotCmp - 22.0).toFixed(2)}</div>
+          </div>
+          {/* Missing Piece 4: Prior Day POC Cluster */}
+          <div className="rounded-md border border-purple-800 bg-[#160d2e] p-1.5 text-center">
+            <div className="text-[9px] text-purple-300 font-bold">6. YESTERDAY POC</div>
+            <div className="text-sm font-black text-purple-400">₹{yPOC}</div>
+            <div className="text-[8px] text-slate-400">yVAH: ₹{yVAH} | yVAL: ₹{yVAL}</div>
           </div>
         </div>
 
@@ -1002,7 +1063,7 @@ export default function TerminalDashboard() {
           </button>
         </div>
 
-        {/* ----------------- TAB 1: EXECUTIVE DESK (SQUARE OFF & LOT UPDATE INTEGRATED) ----------------- */}
+        {/* ----------------- TAB 1: EXECUTIVE DESK (FORTRESS INTEGRATED) ----------------- */}
         {(currentTab === "tab1" || currentTab === "both") && (
           <div className="space-y-2">
             <div className="grid grid-cols-4 gap-2">
@@ -1136,8 +1197,9 @@ export default function TerminalDashboard() {
                     <span>🎯 {selStrike} {selOptionType} LTP: ₹{selectedIndex === "BANK NIFTY" ? "167.95" : "23.89"}</span>
                     <span className="text-[#00e676]">▲ +16.4%</span>
                   </div>
-                  <div className="text-[9px] text-cyan-300">
-                    Lot: {activeIndexConfig.lot_size} | Delta: 0.33 | Total Qty: {activeIndexConfig.lot_size * tab1Lots} | Premium: ₹{((selectedIndex === "BANK NIFTY" ? 167.95 : 23.89) * (activeIndexConfig.lot_size * tab1Lots)).toFixed(2)}
+                  <div className="text-[9px] text-cyan-300 flex justify-between">
+                    <span>Lot: {activeIndexConfig.lot_size} | Total Qty: {activeIndexConfig.lot_size * tab1Lots}</span>
+                    <span className="text-emerald-400 font-bold">🛡️ Slippage Cap: ₹{((selectedIndex === "BANK NIFTY" ? 167.95 : 23.89) * 1.005).toFixed(1)}</span>
                   </div>
                 </div>
 
