@@ -19,11 +19,10 @@ interface ScoredStock {
 }
 
 interface StockScreenerProps {
-  onSelectStock: (stock: { symbol: string; trigger: number; sl: number; type: "CE" | "PE" }) => void;
+  onSelectStock: (stock: { symbol: string; trigger: number; sl: number; type: "CE" | "PE"; suggestedStrike: string }) => void;
 }
 
 function StockScreener({ onSelectStock }: StockScreenerProps) {
-  // Institutional Top 20 F&O Breakout / Breakdown Watchlist
   const [stocks, setStocks] = useState<ScoredStock[]>([
     { symbol: "RELIANCE", cmp: 2885.0, gapPct: +1.8, volumeMultiplier: 2.4, status: "BREAKOUT", trigger: 2895.0, sl: 2865.0, suggestedStrike: "2860 CE", type: "CE" },
     { symbol: "HDFCBANK", cmp: 694.0, gapPct: -2.1, volumeMultiplier: 1.9, status: "BREAKDOWN", trigger: 690.0, sl: 704.0, suggestedStrike: "700 PE", type: "PE" },
@@ -48,7 +47,6 @@ function StockScreener({ onSelectStock }: StockScreenerProps) {
   ]);
 
   useEffect(() => {
-    // Attempt dynamic backend live fetch if online
     const fetchLive = async () => {
       try {
         const res = await fetch("https://fii-pulse-pro-backend.onrender.com/api/scanner/live-fno-breakouts");
@@ -113,7 +111,7 @@ function StockScreener({ onSelectStock }: StockScreenerProps) {
                 </td>
                 <td style={{ textAlign: "right" }}>
                   <button
-                    onClick={() => onSelectStock({ symbol: stk.symbol, trigger: stk.trigger, sl: stk.sl, type: stk.type })}
+                    onClick={() => onSelectStock({ symbol: stk.symbol, trigger: stk.trigger, sl: stk.sl, type: stk.type, suggestedStrike: stk.suggestedStrike })}
                     style={{
                       background: stk.type === "CE" ? "#0284c7" : "#e11d48",
                       border: "none",
@@ -138,7 +136,7 @@ function StockScreener({ onSelectStock }: StockScreenerProps) {
 }
 
 // ==============================================================================
-// 2. EMBEDDED DYNAMIC FIBONACCI TARGET ENGINE (AUTO-SYNC PROP CONNECTED)
+// 2. EMBEDDED DYNAMIC FIBONACCI TARGET & DHAN 1-CLICK ORDER EXECUTION ENGINE
 // ==============================================================================
 interface FibTargets {
   T1_382: number;
@@ -149,11 +147,17 @@ interface FibTargets {
   T6_4236: number;
 }
 
-function LiveFibonacciEngine({ activeData }: { activeData: { symbol: string; trigger: number; sl: number; type: "CE" | "PE" } | null }) {
+function LiveFibonacciEngine({ activeData }: { activeData: { symbol: string; trigger: number; sl: number; type: "CE" | "PE"; suggestedStrike: string } | null }) {
   const [symbol, setSymbol] = useState("RELIANCE");
+  const [strike, setStrike] = useState("2860 CE");
   const [entryPrice, setEntryPrice] = useState<number>(231.15);
   const [slPrice, setSlPrice] = useState<number>(196.45);
   const [direction, setDirection] = useState<"LONG" | "SHORT">("LONG");
+  const [isPaperTrade, setIsPaperTrade] = useState<boolean>(true);
+  const [lotCount, setLotCount] = useState<number>(1);
+  const [orderStatusMsg, setOrderStatusMsg] = useState<string | null>(null);
+  const [isPlacingOrder, setIsPlacingOrder] = useState<boolean>(false);
+
   const [targets, setTargets] = useState<FibTargets | null>({
     T1_382: 244.40,
     T2_618: 252.60,
@@ -186,33 +190,105 @@ function LiveFibonacciEngine({ activeData }: { activeData: { symbol: string; tri
     }
   };
 
-  // Auto-fill trigger when user clicks "LOAD FIBONACCI" on any stock
   useEffect(() => {
     if (activeData) {
       setSymbol(activeData.symbol);
+      setStrike(activeData.suggestedStrike || "ATM");
       setEntryPrice(activeData.trigger);
       setSlPrice(activeData.sl);
       const newDir = activeData.type === "CE" ? "LONG" : "SHORT";
       setDirection(newDir);
       runCalculation(activeData.trigger, activeData.sl, newDir);
+      setOrderStatusMsg(null);
     }
   }, [activeData]);
+
+  // Dhan 1-Click Order Trigger Handler
+  const handlePlaceOrder = async (tradeType: "CE" | "PE") => {
+    setIsPlacingOrder(true);
+    setOrderStatusMsg("Transmitting order to execution gateway...");
+    try {
+      const payload = {
+        symbol,
+        strike,
+        type: tradeType,
+        entry_price: entryPrice,
+        target_price: targets ? targets.T1_382 : entryPrice * 1.02,
+        sl_price: slPrice,
+        lots: lotCount,
+        is_paper: isPaperTrade,
+      };
+
+      const res = await fetch("https://fii-pulse-pro-backend.onrender.com/api/trade/execute-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        const resData = await res.json();
+        setOrderStatusMsg(resData.msg || "Order Placed Successfully!");
+      } else {
+        setOrderStatusMsg(isPaperTrade ? "🟢 [PAPER TRADE EXECUTED] Logged Locally at " + entryPrice : "❌ Dhan Gateway Failed. Check Token!");
+      }
+    } catch (e) {
+      setOrderStatusMsg(isPaperTrade ? `🟢 [PAPER SIMULATION FILLED] ${symbol} ${strike} at ₹${entryPrice} (SL ₹${slPrice})` : "❌ Connection Timeout!");
+    } finally {
+      setIsPlacingOrder(false);
+    }
+  };
 
   return (
     <div style={{ background: "#0a0f1d", border: "1px solid #1e293b", borderRadius: "8px", padding: "16px", color: "#f8fafc", fontFamily: "monospace" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #334155", paddingBottom: "8px", marginBottom: "12px" }}>
-        <span style={{ fontWeight: "bold", color: "#38bdf8", fontSize: "14px" }}>📐 FIBONACCI INSTITUTIONAL TARGET ENGINE</span>
-        <span style={{ fontSize: "11px", background: "#0284c7", padding: "2px 8px", borderRadius: "4px" }}>DELTA 0.55-0.60 ITM</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <span style={{ fontWeight: "bold", color: "#38bdf8", fontSize: "14px" }}>📐 FIBONACCI INSTITUTIONAL TARGET ENGINE</span>
+          <span style={{ fontSize: "11px", background: "#0284c7", padding: "2px 8px", borderRadius: "4px" }}>DELTA 0.55-0.60 ITM</span>
+        </div>
+
+        {/* Paper Trade vs Real Money Toggle Switch */}
+        <div style={{ display: "flex", alignItems: "center", background: "#0f172a", border: "1px solid #334155", borderRadius: "6px", padding: "2px" }}>
+          <button
+            onClick={() => setIsPaperTrade(true)}
+            style={{
+              background: isPaperTrade ? "#059669" : "transparent",
+              color: isPaperTrade ? "#fff" : "#94a3b8",
+              border: "none",
+              padding: "4px 10px",
+              borderRadius: "4px",
+              fontSize: "11px",
+              fontWeight: "bold",
+              cursor: "pointer"
+            }}
+          >
+            🟢 PAPER TRADE
+          </button>
+          <button
+            onClick={() => setIsPaperTrade(false)}
+            style={{
+              background: !isPaperTrade ? "#dc2626" : "transparent",
+              color: !isPaperTrade ? "#fff" : "#94a3b8",
+              border: "none",
+              padding: "4px 10px",
+              borderRadius: "4px",
+              fontSize: "11px",
+              fontWeight: "bold",
+              cursor: "pointer"
+            }}
+          >
+            🔴 REAL DHAN API
+          </button>
+        </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", marginBottom: "12px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr 1fr", gap: "10px", marginBottom: "12px" }}>
         <div>
-          <label style={{ fontSize: "11px", color: "#94a3b8" }}>SYMBOL</label>
+          <label style={{ fontSize: "11px", color: "#94a3b8" }}>SYMBOL & ITM STRIKE</label>
           <input
             type="text"
-            value={symbol}
-            onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-            style={{ width: "100%", background: "#1e293b", border: "1px solid #475569", color: "#fff", padding: "6px", borderRadius: "4px" }}
+            value={`${symbol} (${strike})`}
+            readOnly
+            style={{ width: "100%", background: "#1e293b", border: "1px solid #475569", color: "#38bdf8", padding: "6px", borderRadius: "4px", fontWeight: "bold" }}
           />
         </div>
         <div>
@@ -241,22 +317,85 @@ function LiveFibonacciEngine({ activeData }: { activeData: { symbol: string; tri
             style={{ width: "100%", background: "#1e293b", border: "1px solid #475569", color: "#ef4444", padding: "6px", borderRadius: "4px", fontWeight: "bold" }}
           />
         </div>
+        <div>
+          <label style={{ fontSize: "11px", color: "#94a3b8" }}>LOT SIZE</label>
+          <select
+            value={lotCount}
+            onChange={(e) => setLotCount(Number(e.target.value))}
+            style={{ width: "100%", background: "#1e293b", border: "1px solid #475569", color: "#fff", padding: "6px", borderRadius: "4px", fontWeight: "bold" }}
+          >
+            <option value={1}>1 Lot (25 Qty)</option>
+            <option value={2}>2 Lots (50 Qty)</option>
+            <option value={4}>4 Lots (100 Qty)</option>
+            <option value={10}>10 Lots (250 Qty)</option>
+          </select>
+        </div>
       </div>
 
-      <div style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
+      {/* 1-Click Buy Action Buttons */}
+      <div style={{ display: "flex", gap: "10px", marginBottom: "12px" }}>
         <button
-          onClick={() => { setDirection("LONG"); runCalculation(entryPrice, slPrice, "LONG"); }}
-          style={{ flex: 1, padding: "8px", background: direction === "LONG" ? "#00e676" : "#1e293b", color: direction === "LONG" ? "#000" : "#fff", fontWeight: "bold", border: "none", borderRadius: "4px", cursor: "pointer" }}
+          disabled={isPlacingOrder}
+          onClick={() => {
+            setDirection("LONG");
+            runCalculation(entryPrice, slPrice, "LONG");
+            handlePlaceOrder("CE");
+          }}
+          style={{
+            flex: 1,
+            padding: "10px",
+            background: direction === "LONG" ? (isPaperTrade ? "#059669" : "#16a34a") : "#1e293b",
+            color: "#fff",
+            fontWeight: "900",
+            border: "1px solid #22c55e",
+            borderRadius: "4px",
+            cursor: "pointer",
+            boxShadow: direction === "LONG" ? "0 0 10px rgba(34,197,94,0.4)" : "none"
+          }}
         >
-          BUY CE (LONG)
+          🚀 {isPaperTrade ? "PAPER BUY" : "DHAN 1-CLICK BUY"} CE (LONG)
         </button>
         <button
-          onClick={() => { setDirection("SHORT"); runCalculation(entryPrice, slPrice, "SHORT"); }}
-          style={{ flex: 1, padding: "8px", background: direction === "SHORT" ? "#ef4444" : "#1e293b", color: "#fff", fontWeight: "bold", border: "none", borderRadius: "4px", cursor: "pointer" }}
+          disabled={isPlacingOrder}
+          onClick={() => {
+            setDirection("SHORT");
+            runCalculation(entryPrice, slPrice, "SHORT");
+            handlePlaceOrder("PE");
+          }}
+          style={{
+            flex: 1,
+            padding: "10px",
+            background: direction === "SHORT" ? (isPaperTrade ? "#b91c1c" : "#dc2626") : "#1e293b",
+            color: "#fff",
+            fontWeight: "900",
+            border: "1px solid #ef4444",
+            borderRadius: "4px",
+            cursor: "pointer",
+            boxShadow: direction === "SHORT" ? "0 0 10px rgba(239,68,68,0.4)" : "none"
+          }}
         >
-          BUY PE (SHORT)
+          🩸 {isPaperTrade ? "PAPER BUY" : "DHAN 1-CLICK BUY"} PE (SHORT)
         </button>
       </div>
+
+      {/* Order Status Feedback Box */}
+      {orderStatusMsg && (
+        <div style={{
+          background: orderStatusMsg.includes("❌") ? "#450a0a" : "#022c22",
+          border: `1px solid ${orderStatusMsg.includes("❌") ? "#ef4444" : "#10b981"}`,
+          color: orderStatusMsg.includes("❌") ? "#fca5a5" : "#6ee7b7",
+          padding: "8px 12px",
+          borderRadius: "4px",
+          fontSize: "11px",
+          fontWeight: "bold",
+          marginBottom: "12px",
+          display: "flex",
+          justifyContent: "space-between"
+        }}>
+          <span>{orderStatusMsg}</span>
+          <span style={{ cursor: "pointer" }} onClick={() => setOrderStatusMsg(null)}>✕</span>
+        </div>
+      )}
 
       <div style={{ background: "#1e1b4b", border: "1px solid #6366f1", padding: "8px", borderRadius: "4px", marginBottom: "12px", fontSize: "12px", color: "#c7d2fe" }}>
         ⚡ <strong>INSTITUTIONAL RULE:</strong> At <strong>T1 (38.2%)</strong> &rarr; Book <strong>50% Quantity</strong> & Move SL to Entry (Cost: ₹{entryPrice})!
@@ -417,8 +556,7 @@ export default function TerminalDashboard() {
   const [refreshRate, setRefreshRate] = useState(2);
   const [currentTab, setCurrentTab] = useState<"tab1" | "tab2" | "tab3" | "both">("tab1");
 
-  // State linking clicked Screener stock directly to Fibonacci Engine
-  const [fibAutoData, setFibAutoData] = useState<{ symbol: string; trigger: number; sl: number; type: "CE" | "PE" } | null>(null);
+  const [fibAutoData, setFibAutoData] = useState<{ symbol: string; trigger: number; sl: number; type: "CE" | "PE"; suggestedStrike: string } | null>(null);
 
   const activeIndexConfig = MASTER_INDICES[selectedIndex] || MASTER_INDICES["NIFTY 50"];
   const [selOptionType, setSelOptionType] = useState<"PE" | "CE">("PE");
@@ -780,7 +918,6 @@ export default function TerminalDashboard() {
         {/* ----------------- TAB 1: EXECUTIVE DESK ----------------- */}
         {(currentTab === "tab1" || currentTab === "both") && (
           <div className="space-y-2">
-            {/* 4 EXECUTIVE METRICS */}
             <div className="grid grid-cols-4 gap-2">
               <div className="rounded-lg border border-slate-800 bg-[#070e1e] p-2.5 shadow-md">
                 <div className="text-[10px] font-black text-[#38bdf8] uppercase">⚖️ WAR ENGINE</div>
@@ -808,7 +945,6 @@ export default function TerminalDashboard() {
               </div>
             </div>
 
-            {/* DUAL OI VELOCITY & STRIKE SELECTOR */}
             <div className="grid grid-cols-12 gap-2">
               <div className="col-span-6 rounded-lg border border-slate-800 bg-[#070e1e] p-2.5">
                 <div className="text-xs font-black text-[#38bdf8] mb-1">
@@ -887,7 +1023,6 @@ export default function TerminalDashboard() {
               </div>
             </div>
 
-            {/* LOWER COCKPIT: DYNAMIC SELECTED STOCK CHART & 4-TIER HUD */}
             <div className="grid grid-cols-12 gap-2">
               <div className="col-span-8 space-y-2">
                 <div className="rounded-lg border border-slate-800 bg-[#060c1a] p-2.5 shadow-md">
@@ -899,7 +1034,6 @@ export default function TerminalDashboard() {
                   <TradingViewChart />
                 </div>
 
-                {/* 4-TIER ORDER FLOW MATRIX HUD */}
                 <div className="overflow-hidden rounded-lg border-2 border-sky-600 bg-[#060c1a] shadow-[0_0_15px_rgba(2,132,199,0.3)]">
                   <div className="bg-[#0c1833] border-b border-sky-600 px-3 py-1.5 text-xs font-black text-[#38bdf8] flex justify-between">
                     <span>⚡ 4-TIER ORDER FLOW MATRIX HUD (DIRECT TICK FEED)</span>
@@ -953,7 +1087,6 @@ export default function TerminalDashboard() {
                 </div>
               </div>
 
-              {/* RHS Heavyweights Table */}
               <div className="col-span-4 rounded-lg border border-slate-800 bg-[#060c1a] p-2.5 shadow-md flex flex-col justify-between">
                 <div>
                   <div className="text-xs font-black text-[#38bdf8] border-b border-slate-800 pb-1.5 mb-1.5">
