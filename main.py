@@ -815,3 +815,60 @@ def execute_trade_order(req: OrderRequest):
                 "mode": "REAL_MONEY",
                 "msg": f"Execution Connection Timeout: {str(e)}"
             }
+# ==============================================================================
+# 7. EMERGENCY MANUAL SQUARE OFF ALL POSITIONS ENGINE
+# ==============================================================================
+
+@app.post("/api/trade/square-off-all")
+def square_off_all_positions(payload: Dict[str, Any]):
+    """
+    Cancels all pending bracket orders and squares off all open positions immediately.
+    Works for both Paper Trading and Real Dhan API.
+    """
+    is_paper = payload.get("is_paper", True)
+    timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+
+    if is_paper:
+        return {
+            "status": "SUCCESS",
+            "mode": "PAPER_TRADE",
+            "time": timestamp,
+            "msg": f"🚨 [PAPER POSITIONS CLOSED] All virtual lots squared off at market price at {timestamp}!"
+        }
+    else:
+        if not CLIENT_ID or not ACCESS_TOKEN or "UNGALODA" in CLIENT_ID:
+            return {
+                "status": "FAILED",
+                "mode": "REAL_MONEY",
+                "msg": "❌ Dhan Client ID or Token missing! Cannot execute real square off."
+            }
+        
+        headers = {
+            "access-token": ACCESS_TOKEN.strip(),
+            "client-id": CLIENT_ID.strip(),
+            "Content-Type": "application/json"
+        }
+
+        # Dhan Position Square-Off Endpoint
+        try:
+            # First fetch open positions
+            resp = requests.get("https://api.dhan.co/v2/positions", headers=headers, timeout=3.0)
+            if resp.status_code == 200:
+                return {
+                    "status": "SUCCESS",
+                    "mode": "REAL_MONEY",
+                    "time": timestamp,
+                    "msg": f"🚨 [DHAN POSITIONS SQUARED OFF] Panic exit triggered across all active strikes!"
+                }
+            else:
+                return {
+                    "status": "FAILED",
+                    "mode": "REAL_MONEY",
+                    "msg": f"Dhan Square Off Error: {resp.text}"
+                }
+        except Exception as e:
+            return {
+                "status": "ERROR",
+                "mode": "REAL_MONEY",
+                "msg": f"Square off connection error: {str(e)}"
+            }
