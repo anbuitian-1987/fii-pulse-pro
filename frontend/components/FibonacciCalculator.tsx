@@ -101,7 +101,7 @@ export default function FibonacciCalculator() {
 
       {/* Institutional Protocol Alert */}
       <div style={{ background: "#1e1b4b", border: "1px solid #6366f1", padding: "8px", borderRadius: "4px", marginBottom: "12px", fontSize: "12px", color: "#c7d2fe" }}>
-        ⚡ <strong>INSTITUTIONAL RULE:</strong> At <strong>T1 (38.2%)</strong> $\rightarrow$ Book <strong>50% Quantity</strong> & Move SL to Entry (Cost: ₹{entryPrice})!
+        ⚡ <strong>INSTITUTIONAL RULE:</strong> At <strong>T1 (38.2%)</strong> &rarr; Book <strong>50% Quantity</strong> & Move SL to Entry (Cost: ₹{entryPrice})!
       </div>
 
       {/* Target Grid */}
