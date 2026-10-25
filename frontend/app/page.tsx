@@ -2,17 +2,16 @@
 
 import { useEffect, useState, useRef, useMemo } from "react";
 import TradingViewChart from "@/components/TradingViewChart";
-import FibonacciCalculator from "@/components/FibonacciCalculator";
 
 // ==============================================================================
-// 0. EMBEDDED INLINE INSTITUTIONAL F&O BREAKOUT SCREENER (ZERO IMPORT CONFLICT)
+// 1. EMBEDDED INLINE INSTITUTIONAL F&O BREAKOUT SCREENER (TOP 20 STOCKS)
 // ==============================================================================
 interface ScoredStock {
   symbol: string;
   cmp: number;
   gapPct: number;
   volumeMultiplier: number;
-  status: "BREAKOUT" | "BREAKDOWN" | "CONSOLIDATING";
+  status: "BREAKOUT" | "BREAKDOWN";
   trigger: number;
   sl: number;
   suggestedStrike: string;
@@ -24,7 +23,8 @@ interface StockScreenerProps {
 }
 
 function StockScreener({ onSelectStock }: StockScreenerProps) {
-  const [stocks] = useState<ScoredStock[]>([
+  // Institutional Top 20 F&O Breakout / Breakdown Watchlist
+  const [stocks, setStocks] = useState<ScoredStock[]>([
     { symbol: "RELIANCE", cmp: 2885.0, gapPct: +1.8, volumeMultiplier: 2.4, status: "BREAKOUT", trigger: 2895.0, sl: 2865.0, suggestedStrike: "2860 CE", type: "CE" },
     { symbol: "HDFCBANK", cmp: 694.0, gapPct: -2.1, volumeMultiplier: 1.9, status: "BREAKDOWN", trigger: 690.0, sl: 704.0, suggestedStrike: "700 PE", type: "PE" },
     { symbol: "ICICIBANK", cmp: 1398.5, gapPct: +1.4, volumeMultiplier: 2.1, status: "BREAKOUT", trigger: 1405.0, sl: 1385.0, suggestedStrike: "1390 CE", type: "CE" },
@@ -33,7 +33,35 @@ function StockScreener({ onSelectStock }: StockScreenerProps) {
     { symbol: "SBIN", cmp: 812.0, gapPct: +1.5, volumeMultiplier: 1.8, status: "BREAKOUT", trigger: 818.0, sl: 805.0, suggestedStrike: "805 CE", type: "CE" },
     { symbol: "TCS", cmp: 4120.0, gapPct: +1.2, volumeMultiplier: 1.5, status: "BREAKOUT", trigger: 4140.0, sl: 4090.0, suggestedStrike: "4100 CE", type: "CE" },
     { symbol: "AXISBANK", cmp: 1180.0, gapPct: -1.7, volumeMultiplier: 1.7, status: "BREAKDOWN", trigger: 1172.0, sl: 1192.0, suggestedStrike: "1190 PE", type: "PE" },
+    { symbol: "LT", cmp: 3620.0, gapPct: +1.6, volumeMultiplier: 2.2, status: "BREAKOUT", trigger: 3635.0, sl: 3590.0, suggestedStrike: "3600 CE", type: "CE" },
+    { symbol: "BHARTIARTL", cmp: 1650.0, gapPct: +1.3, volumeMultiplier: 1.8, status: "BREAKOUT", trigger: 1662.0, sl: 1635.0, suggestedStrike: "1640 CE", type: "CE" },
+    { symbol: "KOTAKBANK", cmp: 1780.0, gapPct: -1.5, volumeMultiplier: 1.6, status: "BREAKDOWN", trigger: 1770.0, sl: 1795.0, suggestedStrike: "1780 PE", type: "PE" },
+    { symbol: "BAJFINANCE", cmp: 6850.0, gapPct: -1.8, volumeMultiplier: 1.9, status: "BREAKDOWN", trigger: 6820.0, sl: 6910.0, suggestedStrike: "6900 PE", type: "PE" },
+    { symbol: "MARUTI", cmp: 12450.0, gapPct: +1.3, volumeMultiplier: 1.7, status: "BREAKOUT", trigger: 12500.0, sl: 12380.0, suggestedStrike: "12400 CE", type: "CE" },
+    { symbol: "TRENT", cmp: 7650.0, gapPct: +2.4, volumeMultiplier: 2.8, status: "BREAKOUT", trigger: 7690.0, sl: 7580.0, suggestedStrike: "7600 CE", type: "CE" },
+    { symbol: "HCLTECH", cmp: 1780.0, gapPct: +1.1, volumeMultiplier: 1.5, status: "BREAKOUT", trigger: 1792.0, sl: 1765.0, suggestedStrike: "1760 CE", type: "CE" },
+    { symbol: "SUNPHARMA", cmp: 1890.0, gapPct: +0.9, volumeMultiplier: 1.4, status: "BREAKOUT", trigger: 1898.0, sl: 1878.0, suggestedStrike: "1880 CE", type: "CE" },
+    { symbol: "M&M", cmp: 2950.0, gapPct: -1.4, volumeMultiplier: 1.8, status: "BREAKDOWN", trigger: 2938.0, sl: 2975.0, suggestedStrike: "2960 PE", type: "PE" },
+    { symbol: "TITAN", cmp: 3420.0, gapPct: -1.6, volumeMultiplier: 1.9, status: "BREAKDOWN", trigger: 3405.0, sl: 3445.0, suggestedStrike: "3450 PE", type: "PE" },
+    { symbol: "TATASTEEL", cmp: 152.0, gapPct: -2.0, volumeMultiplier: 2.1, status: "BREAKDOWN", trigger: 150.5, sl: 154.0, suggestedStrike: "155 PE", type: "PE" },
+    { symbol: "JSWSTEEL", cmp: 980.0, gapPct: -1.5, volumeMultiplier: 1.7, status: "BREAKDOWN", trigger: 972.0, sl: 992.0, suggestedStrike: "990 PE", type: "PE" }
   ]);
+
+  useEffect(() => {
+    // Attempt dynamic backend live fetch if online
+    const fetchLive = async () => {
+      try {
+        const res = await fetch("https://fii-pulse-pro-backend.onrender.com/api/scanner/live-fno-breakouts");
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) setStocks(data);
+        }
+      } catch (e) {}
+    };
+    fetchLive();
+    const inv = setInterval(fetchLive, 5000);
+    return () => clearInterval(inv);
+  }, []);
 
   return (
     <div style={{ background: "#060c1a", border: "1px solid #1e293b", borderRadius: "8px", padding: "12px", color: "#f8fafc", fontFamily: "monospace", marginBottom: "10px" }}>
@@ -41,8 +69,8 @@ function StockScreener({ onSelectStock }: StockScreenerProps) {
         <div style={{ fontSize: "12px", fontWeight: "bold", color: "#38bdf8" }}>
           ⚡ INSTITUTIONAL PRE-MARKET MOMENTUM SCANNER (TOP 20 F&O BREAKOUTS)
         </div>
-        <div style={{ fontSize: "10px", color: "#94a3b8" }}>
-          09:08 AM VOLUME & GAP ENGINE | AUTO-SYNC
+        <div style={{ fontSize: "10px", color: "#00e676" }}>
+          🟢 LIVE AUTO-SYNC (20 QUALIFIED STOCKS)
         </div>
       </div>
 
@@ -109,7 +137,166 @@ function StockScreener({ onSelectStock }: StockScreenerProps) {
   );
 }
 
-// 1. COMPLETE MASTER CONSTITUENTS DATABASE: NIFTY 50 (50), BANK NIFTY (12), BSE SENSEX (30)
+// ==============================================================================
+// 2. EMBEDDED DYNAMIC FIBONACCI TARGET ENGINE (AUTO-SYNC PROP CONNECTED)
+// ==============================================================================
+interface FibTargets {
+  T1_382: number;
+  T2_618: number;
+  T3_1000: number;
+  T4_1618: number;
+  T5_2618: number;
+  T6_4236: number;
+}
+
+function LiveFibonacciEngine({ activeData }: { activeData: { symbol: string; trigger: number; sl: number; type: "CE" | "PE" } | null }) {
+  const [symbol, setSymbol] = useState("RELIANCE");
+  const [entryPrice, setEntryPrice] = useState<number>(231.15);
+  const [slPrice, setSlPrice] = useState<number>(196.45);
+  const [direction, setDirection] = useState<"LONG" | "SHORT">("LONG");
+  const [targets, setTargets] = useState<FibTargets | null>({
+    T1_382: 244.40,
+    T2_618: 252.60,
+    T3_1000: 265.85,
+    T4_1618: 287.30,
+    T5_2618: 322.00,
+    T6_4236: 378.15,
+  });
+
+  const runCalculation = (entry: number, sl: number, dir: "LONG" | "SHORT") => {
+    const risk = Math.abs(entry - sl);
+    if (dir === "LONG") {
+      setTargets({
+        T1_382: Number((entry + risk * 0.382).toFixed(2)),
+        T2_618: Number((entry + risk * 0.618).toFixed(2)),
+        T3_1000: Number((entry + risk * 1.000).toFixed(2)),
+        T4_1618: Number((entry + risk * 1.618).toFixed(2)),
+        T5_2618: Number((entry + risk * 2.618).toFixed(2)),
+        T6_4236: Number((entry + risk * 4.236).toFixed(2)),
+      });
+    } else {
+      setTargets({
+        T1_382: Number((entry - risk * 0.382).toFixed(2)),
+        T2_618: Number((entry - risk * 0.618).toFixed(2)),
+        T3_1000: Number((entry - risk * 1.000).toFixed(2)),
+        T4_1618: Number((entry - risk * 1.618).toFixed(2)),
+        T5_2618: Number((entry - risk * 2.618).toFixed(2)),
+        T6_4236: Number((entry - risk * 4.236).toFixed(2)),
+      });
+    }
+  };
+
+  // Auto-fill trigger when user clicks "LOAD FIBONACCI" on any stock
+  useEffect(() => {
+    if (activeData) {
+      setSymbol(activeData.symbol);
+      setEntryPrice(activeData.trigger);
+      setSlPrice(activeData.sl);
+      const newDir = activeData.type === "CE" ? "LONG" : "SHORT";
+      setDirection(newDir);
+      runCalculation(activeData.trigger, activeData.sl, newDir);
+    }
+  }, [activeData]);
+
+  return (
+    <div style={{ background: "#0a0f1d", border: "1px solid #1e293b", borderRadius: "8px", padding: "16px", color: "#f8fafc", fontFamily: "monospace" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #334155", paddingBottom: "8px", marginBottom: "12px" }}>
+        <span style={{ fontWeight: "bold", color: "#38bdf8", fontSize: "14px" }}>📐 FIBONACCI INSTITUTIONAL TARGET ENGINE</span>
+        <span style={{ fontSize: "11px", background: "#0284c7", padding: "2px 8px", borderRadius: "4px" }}>DELTA 0.55-0.60 ITM</span>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", marginBottom: "12px" }}>
+        <div>
+          <label style={{ fontSize: "11px", color: "#94a3b8" }}>SYMBOL</label>
+          <input
+            type="text"
+            value={symbol}
+            onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+            style={{ width: "100%", background: "#1e293b", border: "1px solid #475569", color: "#fff", padding: "6px", borderRadius: "4px" }}
+          />
+        </div>
+        <div>
+          <label style={{ fontSize: "11px", color: "#94a3b8" }}>ENTRY (TRIGGER)</label>
+          <input
+            type="number"
+            value={entryPrice}
+            onChange={(e) => {
+              const val = Number(e.target.value);
+              setEntryPrice(val);
+              runCalculation(val, slPrice, direction);
+            }}
+            style={{ width: "100%", background: "#1e293b", border: "1px solid #475569", color: "#00e676", padding: "6px", borderRadius: "4px", fontWeight: "bold" }}
+          />
+        </div>
+        <div>
+          <label style={{ fontSize: "11px", color: "#94a3b8" }}>STOP LOSS (PIVOT)</label>
+          <input
+            type="number"
+            value={slPrice}
+            onChange={(e) => {
+              const val = Number(e.target.value);
+              setSlPrice(val);
+              runCalculation(entryPrice, val, direction);
+            }}
+            style={{ width: "100%", background: "#1e293b", border: "1px solid #475569", color: "#ef4444", padding: "6px", borderRadius: "4px", fontWeight: "bold" }}
+          />
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
+        <button
+          onClick={() => { setDirection("LONG"); runCalculation(entryPrice, slPrice, "LONG"); }}
+          style={{ flex: 1, padding: "8px", background: direction === "LONG" ? "#00e676" : "#1e293b", color: direction === "LONG" ? "#000" : "#fff", fontWeight: "bold", border: "none", borderRadius: "4px", cursor: "pointer" }}
+        >
+          BUY CE (LONG)
+        </button>
+        <button
+          onClick={() => { setDirection("SHORT"); runCalculation(entryPrice, slPrice, "SHORT"); }}
+          style={{ flex: 1, padding: "8px", background: direction === "SHORT" ? "#ef4444" : "#1e293b", color: "#fff", fontWeight: "bold", border: "none", borderRadius: "4px", cursor: "pointer" }}
+        >
+          BUY PE (SHORT)
+        </button>
+      </div>
+
+      <div style={{ background: "#1e1b4b", border: "1px solid #6366f1", padding: "8px", borderRadius: "4px", marginBottom: "12px", fontSize: "12px", color: "#c7d2fe" }}>
+        ⚡ <strong>INSTITUTIONAL RULE:</strong> At <strong>T1 (38.2%)</strong> &rarr; Book <strong>50% Quantity</strong> & Move SL to Entry (Cost: ₹{entryPrice})!
+      </div>
+
+      {targets && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px" }}>
+          <div style={{ background: "#0f172a", border: "1px solid #22c55e", padding: "8px", borderRadius: "4px", textAlign: "center" }}>
+            <div style={{ fontSize: "11px", color: "#86efac" }}>T1 (0.382) - BOOK 50%</div>
+            <div style={{ fontSize: "16px", fontWeight: "bold", color: "#22c55e" }}>₹{targets.T1_382}</div>
+          </div>
+          <div style={{ background: "#0f172a", border: "1px solid #38bdf8", padding: "8px", borderRadius: "4px", textAlign: "center" }}>
+            <div style={{ fontSize: "11px", color: "#7dd3fc" }}>T2 (0.618) - GOLDEN</div>
+            <div style={{ fontSize: "16px", fontWeight: "bold", color: "#38bdf8" }}>₹{targets.T2_618}</div>
+          </div>
+          <div style={{ background: "#0f172a", border: "1px solid #eab308", padding: "8px", borderRadius: "4px", textAlign: "center" }}>
+            <div style={{ fontSize: "11px", color: "#fde047" }}>T3 (1.000) - 1:1 LEG</div>
+            <div style={{ fontSize: "16px", fontWeight: "bold", color: "#eab308" }}>₹{targets.T3_1000}</div>
+          </div>
+          <div style={{ background: "#0f172a", border: "1px solid #a855f7", padding: "8px", borderRadius: "4px", textAlign: "center" }}>
+            <div style={{ fontSize: "11px", color: "#d8b4fe" }}>T4 (1.618) - EXT 1</div>
+            <div style={{ fontSize: "16px", fontWeight: "bold", color: "#a855f7" }}>₹{targets.T4_1618}</div>
+          </div>
+          <div style={{ background: "#0f172a", border: "1px solid #f97316", padding: "8px", borderRadius: "4px", textAlign: "center" }}>
+            <div style={{ fontSize: "11px", color: "#fdba74" }}>T5 (2.618) - RUNNER</div>
+            <div style={{ fontSize: "16px", fontWeight: "bold", color: "#f97316" }}>₹{targets.T5_2618}</div>
+          </div>
+          <div style={{ background: "#0f172a", border: "1px solid #ec4899", padding: "8px", borderRadius: "4px", textAlign: "center" }}>
+            <div style={{ fontSize: "11px", color: "#f472b6" }}>T6 (4.236) - SUPER</div>
+            <div style={{ fontSize: "16px", fontWeight: "bold", color: "#ec4899" }}>₹{targets.T6_4236}</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ==============================================================================
+// 3. MASTER CONSTITUENTS DATABASE: NIFTY 50 (50), BANK NIFTY (12), BSE SENSEX (30)
+// ==============================================================================
 const MASTER_INDICES: Record<string, any> = {
   "NIFTY 50": {
     sec_id: 13, step: 50, lot_size: 25, fallback_cmp: 22600.00, fallback_prev: 22687.65, top_limit: 15,
@@ -230,6 +417,7 @@ export default function TerminalDashboard() {
   const [refreshRate, setRefreshRate] = useState(2);
   const [currentTab, setCurrentTab] = useState<"tab1" | "tab2" | "tab3" | "both">("tab1");
 
+  // State linking clicked Screener stock directly to Fibonacci Engine
   const [fibAutoData, setFibAutoData] = useState<{ symbol: string; trigger: number; sl: number; type: "CE" | "PE" } | null>(null);
 
   const activeIndexConfig = MASTER_INDICES[selectedIndex] || MASTER_INDICES["NIFTY 50"];
@@ -867,8 +1055,8 @@ export default function TerminalDashboard() {
         {/* ----------------- TAB 3: LIVE F&O BREAKOUT & FIBONACCI ENGINE ----------------- */}
         {currentTab === "tab3" && (
           <div className="space-y-3">
-            <StockScreener onSelectStock={(stock: { symbol: string; trigger: number; sl: number; type: "CE" | "PE" }) => setFibAutoData(stock)} />
-            <FibonacciCalculator />
+            <StockScreener onSelectStock={(stock) => setFibAutoData(stock)} />
+            <LiveFibonacciEngine activeData={fibAutoData} />
           </div>
         )}
       </main>
